@@ -68,7 +68,73 @@
 #sbWarn {color:#ffb74d; font-size:12px; margin-left:6px;}
 </style>
 
+<style>
+/* Masquer les vieux contrôles en double (prototype local) */
+#phaseSel, #createRoomBtn, #confirmPlayersBtn, #assignRolesBtn, #unlockPlayersBtn, #clearRoomBtn,
+#selfPlayerSel, #viewAsBtn { display:none !important; }
+
+/* Quand la partie est lancée, on cache les boutons de la barre pour tout le monde
+   (sauf Reset qui reste visible chez l’hôte via JS) */
+html[data-mode="play"] #createBtn,
+html[data-mode="play"] #joinBtn,
+html[data-mode="play"] #startBtn,
+html[data-mode="play"] #codeInput,
+html[data-mode="play"] #pseudoInput { display:none !important; }
+</style>
 </head>
+<script>
+(function(){
+  // Cache “Salon / Joueurs confirmés” du vieux proto s’ils existent
+  function hideLegacyPanelsByHeading() {
+    const headings = Array.from(document.querySelectorAll('h2, h3'));
+    headings.forEach(h => {
+      const t = (h.textContent||'').trim().toLowerCase();
+      if (t === 'salon' || t === 'joueurs confirmés' || t.includes('salon et joueurs')) {
+        const wrap = h.closest('section, div, article') || h.parentElement;
+        if (wrap) wrap.style.display = 'none';
+      }
+    });
+    // Cache tout bouton “Convoquer la famille” hors barre en-ligne
+    const bar = document.getElementById('onlineBar');
+    const barBtns = new Set(Array.from(bar ? bar.querySelectorAll('button') : []).map(b=>b));
+    document.querySelectorAll('button').forEach(btn=>{
+      if ((btn.textContent||'').trim().toLowerCase().includes('convoquer la famille')) {
+        if (!barBtns.has(btn)) btn.style.display='none';
+      }
+    });
+  }
+
+  // Bascule visuelle selon l’état de la room
+  window.updateRoomUI = window.updateRoomUI || function(room){
+    if (!room) return;
+    if (room.status === 'enCours') {
+      document.documentElement.setAttribute('data-mode','play');
+      const phone = document.getElementById('phoneContent');
+      if (phone) phone.scrollIntoView({ behavior:'smooth', block:'start' });
+    } else {
+      document.documentElement.setAttribute('data-mode','host');
+    }
+    // Montrer/masquer Start & Reset côté hôte
+    const isHost = (window.hostDeviceId === window.deviceId);
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    if (startBtn) startBtn.style.display = (isHost && room.status==='lobby') ? 'inline-block' : 'none';
+    if (resetBtn) resetBtn.style.display = (isHost && room.status!=='lobby') ? 'inline-block' : 'none';
+  };
+
+  // Petite synchro si on recharge une room déjà enCours
+  window.forceRoomRefresh = window.forceRoomRefresh || async function(){
+    if (!window.supa || !window.roomId) return;
+    const { data: room } = await supa.from('game_rooms').select('*').eq('id', roomId).single();
+    if (room) window.updateRoomUI(room);
+  };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    hideLegacyPanelsByHeading();
+    if (window.forceRoomRefresh) setTimeout(window.forceRoomRefresh, 200);
+  });
+})();
+</script>
 <body>
 
 <!-- SUPABASE-INTEGRATION-INJECTED -->
