@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>La Famille — Whisky & Cigar (Online)</title>
+<link rel="icon" href="data:,"/>
+<style>
+:root{
+  --bg:#0b0b0c; --fg:#f5f5f6; --muted:#a5a5ac;
+  --panel:#141416; --line:#242428; --accent:#e08b2c; --bad:#ff5757; --good:#43c27d;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);}
+h1,h2,h3{margin:8px 0 6px}
+button{background:var(--accent);border:0;color:#111;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+input,select{background:#111114;color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.badge{background:#222;padding:6px 10px;border-radius:999px;font-size:12px}
+.small{font-size:12px;color:var(--muted)}
+
+#landing{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:50}
+#landing .wrap{width:min(680px,92%);}
+#landing .row{margin:10px 0}
+#lobby{display:none;position:sticky;top:0;z-index:40;border-bottom:1px solid var(--line)}
+#lobby .wrap{display:flex;gap:10px;align-items:center;padding:10px}
+#playerChips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:#1b1b1f;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font-size:12px}
+.chip .kick{margin-left:6px;color:var(--bad);cursor:pointer;font-weight:700;display:none}
+.host .chip .kick{display:inline}
+
+main{max-width:1100px;margin:70px auto 100px;padding:0 14px;display:none}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+
+.section{padding:12px}
+.section h2{font-size:16px;margin-bottom:8px}
+.list{display:grid;gap:6px}
+.row-between{display:flex;justify-content:space-between;align-items:center}
+
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;font-size:14px}
+
+.log{max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:#0f0f11}
+
+.hidden{display:none !important}
+
+html.lobby #landing{display:flex}
+html.lobby #lobby{display:flex}
+html.started #landing{display:none}
+html.started main{display:block}
+
+fieldset{border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
+legend{padding:0 6px;color:var(--muted);font-size:12px}
+</style>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+  async function resolveActions(){
+  // 1) Charger actions du tour
+  const round = await getCurrentRound();
+  const { data: acts } = await supa.from("game_actions")
+    .select("*")
+    .eq("room_id", roomId)
+    .eq("round", round)
+    .eq("status","PENDING")
+    .order("created_at",{ascending:true});
+
+  if(!acts || acts.length===0){
+    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:"(Aucune magouille à résoudre.)" });
+    return;
+  }
+
+  // 2) Calcul des toasts par cible
+  const toastsByTarget = {};
+  for(const a of acts.filter(a=>a.type==="TOAST")){
+    if(!a.target_id) continue;
+    toastsByTarget[a.target_id] = (toastsByTarget[a.target_id]||0) + 1;
+  }
+  if(Object.keys(toastsByTarget).length>0){
+    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🥂 Les toasts ont été appliqués." });
+  }
+
+  // 3) Appliquer les coups fourrés
+  for(const a of acts.filter(a=>a.type==="COUP_FOURRE")){
+    if(!a.target_id) continue;
+    // état courant de la cible
+    const { data: target } = await supa.from("game_players").select("*").eq("id", a.target_id).single();
+    if(!target || target.status==="DEAD") continue;
+
+    let shields = toastsByTarget[a.target_id] || 0;
+    const raw = 3;
+    const dmg = Math.max(0, raw - Math.max(0, shields));
+    // consommer les toasts
+    const consumed = Math.min(shields, raw);
+    toastsByTarget[a.target_id] = Math.max(0, shields - consumed);
+
+    let newGlasses = Math.max(0, (target.glasses||0) - dmg);
+    let newStatus = newGlasses<=0 ? "DEAD" : target.status;
+
+    await supa.from("game_players").update({ glasses:newGlasses, status:newStatus }).eq("id", target.id);
+
+    if(dmg>0){
+      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`💥 ${target.name} a vacillé après un coup fourré.` });
+    }
+    if(newStatus==="DEAD"){
+      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`🌑 ${target.name} est tombé dans la nuit.` });
+    }
+  }
+
+  // 4) Rappeler à la table
+  // On récupère les paramètres init par rôle depuis settings
+  const { data: room } = await supa.from("game_rooms").select("settings").eq("id", roomId).single();
+  const init = room?.settings?.init || {};
+  for(const a of acts.filter(a=>a.type==="RAPPEL")){
+    if(!a.target_id) continue;
+    const { data: t } = await supa.from("game_players").select("*").eq("id", a.target_id).single();
+    if(!t || t.status!=="DEAD") continue;
+    const roleKey = t.role || "SOLDAT";
+    const initGlasses = (init[roleKey]?.glasses) ?? 3;
+
+    await supa.from("game_players").update({ status:"ALIVE", glasses:initGlasses }).eq("id", t.id);
+    await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`🕯️ ${t.name} a été rappelé à la table.` });
+  }
+
+  // 5) Enquêtes : écrire les résultats privés
+  for(const a of acts.filter(a=>a.type==="ENQUETE")){
+    if(!a.target_id) continue;
+    const { data: t } = await supa.from("game_players").select("role").eq("id", a.target_id).single();
+    await supa.from("game_actions").update({ payload: { ...(a.payload||{}), result_role: t?.role || null } }).eq("id", a.id);
+  }
+  if(acts.some(a=>a.type==="ENQUETE")){
+    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🔎 Une enquête a porté ses fruits." });
+  }
+
+  // 6) Marquer résolues
+  await supa.from("game_actions").update({ status:"RESOLVED" }).eq("room_id", roomId).eq("round", round).eq("status","PENDING");
+
+  // 7) Fin : réinit toasts (c’est implicite car non stockés en DB) → message à l’entrée du tour suivant
+}
+
+const SB_URL = "https://yogpjqdgpquomgtbcvxu.supabase.co";   // ← remplace par ton URL Supabase
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvZ3BqcWRncHF1b21ndGJjdnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMDc2MjgsImV4cCI6MjA3Njg4MzYyOH0.sK1DDyTPZZMAl4HbeigejK4cgydNFS68UjmB7JgbweA";   // ← remplace par ta anon public key
+
+let supa = null;
+const deviceId = localStorage.getItem("deviceId") || (crypto.randomUUID?.() || String(Math.random()).slice(2));
+localStorage.setItem("deviceId", deviceId);
+
+let roomId=null, roomCode=null, hostDeviceId=null, mePlayerId=null, isHost=false;
+let chRoom=null, chPlayers=null, chLog=null, pollTimer=null;let currentPhase = "secret";
+let playersCache = [];
+let lastPendingHTML = ""; // anti-flicker memo           // cache pour listes de cibles
+let lastInvestHTML = "";  // memo for investigation box
+
+function $(s){return document.querySelector(s)}
+function $all(s){return Array.from(document.querySelectorAll(s))}
+function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<5;i++)s+=A[Math.floor(Math.random()*A.length)];return s}
+function phaseLabel(ph){return {secret:"Préparation des magouilles", resolve:"Résolution des magouilles", debate:"Débat", vote:"Vote"}[ph] || ph;}
+
+document.addEventListener("DOMContentLoaded", async ()=>{
+  if(!SB_URL||!SB_KEY){ alert("Configure SB_URL/SB_KEY en haut du fichier."); return; }
+  supa = supabase.createClient(SB_URL, SB_KEY);
+  document.documentElement.classList.add("lobby");
+  $("#createBtn").onclick = createRoom;
+  $("#joinBtn").onclick = joinRoom;
+  $("#assignBtn").onclick = assignAndStart;
+  $("#phaseSel").onchange = changePhase;
+  $("#nextBtn").onclick = nextPhase;
+  $("#resetBtn").onclick = resetLobby;
+});
+
+// ===== Create / Join =====
+async function createRoom(){
+  const pseudo = $("#pseudo").value.trim();
+  let code = $("#code").value.trim();
+  if(!pseudo) return alert("Entre un pseudo");
+  if(!code) code = randCode();
+  const { data: room, error } = await supa.from("game_rooms").insert({ code, host_device_id: deviceId, status:"lobby", phase:"secret", settings:{} }).select().single();
+  if(error){
+    if(String(error.message||"").includes("duplicate key")) return alert("Code déjà pris. Essaie un autre.");
+    return alert(error.message);
+  }
+  roomId=room.id; roomCode=room.code; hostDeviceId=room.host_device_id; isHost=true;
+  await upsertPlayer(pseudo, true);
+  enterLobby();
+}
+
+async function joinRoom(){
+  const pseudo = $("#pseudo").value.trim();
+  const code = $("#code").value.trim();
+  if(!pseudo) return alert("Entre un pseudo");
+  if(!code) return alert("Entre un code");
+  const { data: room, error } = await supa.from("game_rooms").select("*").eq("code", code).maybeSingle();
+  if(error || !room) return alert("Salle introuvable");
+  roomId=room.id; roomCode=room.code; hostDeviceId=room.host_device_id; isHost=(hostDeviceId===deviceId);
+  await upsertPlayer(pseudo, isHost);
+  enterLobby();
+}
+
+async function upsertPlayer(name, asHost){
+  const { data: existing } = await supa.from("game_players").select("id").eq("room_code", roomCode).eq("name", name).maybeSingle();
+  if(existing){
+    const { data: me } = await supa.from("game_players").update({ device_id: deviceId, is_host: asHost||false }).eq("id", existing.id).select().single();
+    mePlayerId = me.id;
+  }else{
+    const { data: me } = await supa.from("game_players").insert({ room_id: roomId, room_code: roomCode, device_id: deviceId, name, is_host: asHost||false }).select().single();
+    mePlayerId = me.id;
+  }
+  localStorage.setItem("roomCode", roomCode);
+  localStorage.setItem("playerName", name);
+}
+
+// ===== Lobby =====
+function enterLobby(){
+  $("#landing").style.display="none";
+  $("#lobby").style.display="block";
+  $("main").style.display="none";
+  $("#hostControls").style.display = isHost ? "block" : "none";
+  document.body.classList.toggle('host', isHost);
+  $("#assignBtn").disabled = false;
+  $("#phaseSel").disabled = !isHost;
+  $("#nextBtn").disabled = !isHost;
+  $("#resetBtn").disabled = !isHost;
+  $("#lbCode").textContent = roomCode;
+  subscribeRoom(); subscribePlayers(); subscribeLog();
+  startPoll();
+}
+
+function startPoll(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(()=>{ refreshPlayers(); syncRoomPhase(); }, 1500);
+}
+
+function subscribeRoom(){
+  if(chRoom) supa.removeChannel(chRoom);
+  chRoom = supa.channel("room_"+roomId)
+    .on("postgres_changes",{event:"*",schema:"public",table:"game_rooms",filter:"id=eq."+roomId}, payload=>{
+      const r = payload.new || payload.old;
+      if(r.status==="started") enterGame();
+      if(r.phase) setPhaseUI(r.phase);
+    })
+    .subscribe();
+  syncRoomPhase();
+}
+
+async function syncRoomPhase(){
+  const { data: r } = await supa.from("game_rooms").select("status,phase,round").eq("id", roomId).single();
+  if(!r) return;
+  if(r.status==="started") enterGame();
+  setPhaseUI(r.phase||"secret");
+}
+
+function subscribePlayers(){
+  if(chPlayers) supa.removeChannel(chPlayers);
+  chPlayers = supa.channel("players_"+roomId)
+    .on("postgres_changes",
+      { event:"*", schema:"public", table:"game_players" },
+      payload => {
+        // filtre côté client pour ne garder que la salle courante
+        const affected = payload.new?.room_id ?? payload.old?.room_id;
+        if(affected === roomId){
+          refreshPlayers();
+          refreshGroupTable();
+        }
+      }
+    )
+    .subscribe();
+  refreshPlayers();
+}
+
+function subscribeLog(){
+  if(chLog) supa.removeChannel(chLog);
+  chLog = supa.channel("log_"+roomId)
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"game_log",filter:"room_id=eq."+roomId}, payload=> appendLog(payload.new))
+    .subscribe();
+  supa.from("game_log").select("*").eq("room_id", roomId).order("created_at",{ascending:true}).then(({data})=>{
+    $("#logList").innerHTML="";
+    (data||[]).forEach(appendLog);
+  });
+}
+
+async function refreshPlayers(){
+  const { data: players } = await supa
+    .from("game_players")
+    .select("id,name,is_host,status,role,glasses,cigars")
+    .eq("room_id", roomId)
+    .order("created_at",{ascending:true});
+
+  playersCache = players || [];
+
+  $("#lbCount").textContent = players?.length || 0;
+  $("#playerChips").innerHTML = (players||[]).map(p=>`<span class="chip">${p.is_host?'👑 ':''}${p.name}${p.status==='DEAD'?' ☠️':''}${isHost?` <span class="kick" data-id="${p.id}" title="Retirer">✕</span>`:''}</span>`).join(" ");
+}
+
+document.addEventListener("click", async (e)=>{
+  if(e.target.classList.contains("kick")){
+    if(!isHost) return;
+    const id = e.target.getAttribute("data-id");
+    const { error } = await supa.from("game_players").delete().eq("id", id);
+    if(error){
+      alert("Suppression impossible : " + (error.message || "RLS/policy"));
+      return;
+    }
+    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:"🟥 Un joueur a été retiré du salon." });
+    refreshPlayers();
+  }
+});
+
+
+// ===== Assign & Start =====
+function getLobbySettings(){
+  return {
+    init: {
+      PARRAIN:   {glasses: parseInt($("#initParrainGl").value||"4",10), cigars: parseInt($("#initParrainCg").value||"1",10)},
+      SOUS_CHEF: {glasses: parseInt($("#initSousGl").value||"4",10), cigars: parseInt($("#initSousCg").value||"1",10)},
+      SOLDAT:    {glasses: parseInt($("#initSoldGl").value||"3",10), cigars: parseInt($("#initSoldCg").value||"0",10)},
+      INFILTRE:  {glasses: parseInt($("#initInfGl").value||"3",10), cigars: parseInt($("#initInfCg").value||"0",10)}
+    },
+    counts: {
+      soldiers: parseInt($("#optSoldiers").value||"0",10),
+      infiltres: parseInt($("#optInfiltres").value||"0",10)
+    }
+  };
+}
+
+async function assignAndStart(){
+  if(!isHost) return alert("Seul l’hôte");
+  const { data: players } = await supa.from("game_players").select("id,name").eq("room_id", roomId).order("created_at",{ascending:true});
+  if(!players || players.length<3) return alert("Il faut au moins 3 joueurs.");
+
+  const set = getLobbySettings();
+  const total = players.length;
+  const fixed = 2;
+  const remaining = total - fixed;
+  if(set.counts.infiltres<0 || set.counts.soldiers<0 || set.counts.infiltres+set.counts.soldiers!==remaining){
+    return alert("Répartition invalide : Soldats + Infiltrés doit = joueurs restants.");
+  }
+
+  const shuffled = [...players].sort(()=>Math.random()-0.5);
+  const assign = [];
+  assign.push({id:shuffled[0].id, role:"PARRAIN"});
+  assign.push({id:shuffled[1].id, role:"SOUS_CHEF"});
+  let i=2;
+  for(let k=0;k<set.counts.infiltres;k++) assign.push({id:shuffled[i++].id, role:"INFILTRE"});
+  for(let k=0;k<set.counts.soldiers;k++)  assign.push({id:shuffled[i++].id, role:"SOLDAT"});
+
+  for(const a of assign){
+    const init = set.init[a.role] || {glasses:3, cigars:0};
+    await supa.from("game_players").update({ role:a.role, glasses:init.glasses, cigars:init.cigars, status:"ALIVE" }).eq("id", a.id);
+  }
+  await supa.from("game_rooms").update({ status:"started", phase:"secret", round:1, settings:set }).eq("id", roomId);
+  await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:"👑 La famille est convoquée. La partie commence." });
+  enterGame();
+}
+
+// ===== Game =====
+function enterGame(){
+  document.body.classList.toggle('host', isHost);
+  document.documentElement.classList.remove("lobby");
+  document.documentElement.classList.add("started");
+  $("#lobby").style.display="block";
+  $("main").style.display="block";
+  refreshMe();
+  refreshGroupTable();
+}
+
+async function refreshMe(){
+  const myName = localStorage.getItem("playerName");
+  const { data: me } = await supa
+    .from("game_players")
+    .select("*")
+    .eq("room_id", roomId)
+    .eq("name", myName)
+    .maybeSingle();
+
+  if(!me){
+    $("#meCard").innerHTML = "<div class='small'>Rejoins avec ton pseudo pour récupérer ta fiche.</div>";
+    return;
+  }
+  mePlayerId = me.id;
+
+  const roleLabel = {PARRAIN:"Parrain", SOUS_CHEF:"Sous-chef", SOLDAT:"Soldat", INFILTRE:"Infiltré"}[me.role||""] || "—";
+  const canActNow = (currentPhase === "secret") && (me.status !== "DEAD");
+
+  // Anti‑flicker : si on clique/ouvre un select dans #meCard, ne pas rerender tout le bloc
+  const interacting = document.activeElement && $("#meCard") && $("#meCard").contains(document.activeElement);
+  if(interacting){
+    renderMyPending(me);
+    renderMyInvestigations(me);
+    return;
+  }
+
+  const alive = (playersCache||[]).filter(p=>p.status!=="DEAD");
+  const dead  = (playersCache||[]).filter(p=>p.status==="DEAD");
+
+  const optsAlive = alive.map(p=>`<option value="${p.id}">${p.name}</option>`).join("");
+  const optsDead  = dead.map(p=>`<option value="${p.id}">${p.name}</option>`).join("");
+
+  const disabledAttr = canActNow ? "" : "disabled title='Utilisable seulement pendant la Préparation des magouilles'";
+
+  let parrainFreeLeft = false;
+  if(me.role === "PARRAIN"){
+    const { data: myToasts } = await supa
+      .from("game_actions")
+      .select("id,payload,round,status,type,actor_id")
+      .eq("room_id", roomId)
+      .eq("actor_id", me.id)
+      .eq("round", await getCurrentRound())
+      .eq("type","TOAST");
+    const usedFree = (myToasts||[]).some(a => a.payload && a.payload.free === true && a.status !== "CANCELLED");
+    parrainFreeLeft = !usedFree;
+  }
+
+  $("#meCard").innerHTML = `
+    <div class="row-between">
+      <div><b>${myName}</b> — <span class="badge">${roleLabel}</span></div>
+      <div class="small">Phase : ${phaseLabel(currentPhase)}</div>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <div class="badge">🍷 <b>${me.glasses}</b></div>
+      <div class="badge">🚬 <b>${me.cigars}</b></div>
+      <div class="badge">${me.status==='DEAD'?'☠️ Mort':'🟢 Vivant'}</div>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <div class="row-between"><h3>Actions</h3><span class="small">${canActNow?'':'(désactivées hors Préparation des magouilles)'}</span></div>
+
+      <div class="list small">
+
+        <div class="row">
+          <span>🥂 Porter un toast ${me.role==='PARRAIN' && parrainFreeLeft ? '(gratuit, 1×/tour)' : '(coût 1 🚬)'}</span>
+          <select id="ac_toast_target">${optsAlive}</select>
+          <button id="ac_toast_btn" ${disabledAttr}>Valider</button>
+        </div>
+
+        <div class="row">
+          <span>💥 Coup fourré (coût 3 🚬, -3 verres, réduit par toasts)</span>
+          <select id="ac_coup_target">${optsAlive}</select>
+          <button id="ac_coup_btn" ${disabledAttr}>Valider</button>
+        </div>
+
+        <div class="row">
+          <span>🔎 Enquêter (coût 2 🚬, résultat privé)</span>
+          <select id="ac_enq_target">${optsAlive}</select>
+          <button id="ac_enq_btn" ${disabledAttr}>Valider</button>
+        </div>
+
+        <div class="row">
+          <span>🕯️ Rappeler à la table (coût 4 🚬, ressuscite avec verres init du rôle)</span>
+          <select id="ac_rap_target">${optsDead}</select>
+          <button id="ac_rap_btn" ${disabledAttr}>Valider</button>
+        </div>
+
+        <div id="myActionsBox" class="small"></div>
+        <div id="investResultBox" class="small"></div>
+      </div>
+    </div>
+  `;
+
+  if(canActNow){
+    $("#ac_toast_btn")?.addEventListener("click", ()=> submitAction(me, "TOAST", $("#ac_toast_target").value, parrainFreeLeft));
+    $("#ac_coup_btn")?.addEventListener("click", ()=> submitAction(me, "COUP_FOURRE", $("#ac_coup_target").value));
+    $("#ac_enq_btn") ?.addEventListener("click", ()=> submitAction(me, "ENQUETE", $("#ac_enq_target").value));
+    $("#ac_rap_btn") ?.addEventListener("click", ()=> submitAction(me, "RAPPEL", $("#ac_rap_target").value));
+  }
+
+  renderMyPending(me);
+  renderMyInvestigations(me);
+}
+async function getCurrentRound(){
+  const { data: r } = await supa.from("game_rooms").select("round").eq("id", roomId).single();
+  return r?.round || 1;
+}
+
+async function submitAction(me, type, targetId, parrainFree=false){
+  if(currentPhase !== "secret"){ alert("Actions utilisables seulement pendant la Préparation des magouilles."); return; }
+  if(me.status === "DEAD"){ alert("Tu ne peux pas agir en étant mort."); return; }
+  if(!targetId){ alert("Choisis une cible."); return; }
+
+  const costs = { TOAST:1, COUP_FOURRE:3, ENQUETE:2, RAPPEL:4 };
+  let cost = costs[type] || 0;
+  if(type==="TOAST" && me.role==="PARRAIN" && parrainFree) cost = 0;
+
+  if(me.cigars < cost){ alert("Pas assez de cigares."); return; }
+
+  const round = await getCurrentRound();
+
+  // Empêcher le toast gratuit 2x
+  if(type==="TOAST" && me.role==="PARRAIN" && parrainFree){
+    const { data: already } = await supa.from("game_actions")
+      .select("id").eq("room_id",roomId).eq("actor_id",me.id)
+      .eq("round",round).eq("type","TOAST").contains("payload", {"free":true});
+    if((already||[]).length>0){ alert("Toast gratuit déjà utilisé ce tour."); return; }
+  }
+
+  // Débiter les cigares tout de suite (pour éviter overspend)
+  if(cost>0){
+    await supa.from("game_players").update({ cigars: me.cigars - cost }).eq("id", me.id);
+    me.cigars -= cost;
+  }
+
+  const payload = (type==="TOAST" && me.role==="PARRAIN" && parrainFree) ? {free:true} : {};
+  await supa.from("game_actions").insert({
+    room_id: roomId, actor_id: me.id, target_id: targetId, type, round, payload, status:"PENDING"
+  });
+
+  // journal neutre
+  const neutral = {
+    TOAST:      "🥂 Un toast a été porté en secret.",
+    COUP_FOURRE:"💥 Un coup fourré se prépare dans l’ombre.",
+    ENQUETE:    "🔎 Une enquête a été programmée.",
+    RAPPEL:     "🕯️ Un rappel à la table a été programmé."
+  }[type];
+  if(neutral){
+    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text: neutral });
+  }
+
+  refreshMe();
+  refreshGroupTable();
+}
+
+async function renderMyPending(me){
+  const round = await getCurrentRound();
+  const { data: myActs } = await supa.from("game_actions")
+    .select("id,type,target_id,status")
+    .eq("room_id", roomId)
+    .eq("actor_id", me.id)
+    .eq("round", round)
+    .neq("status","RESOLVED")
+    .order("created_at",{ascending:true});
+
+  const nameById = Object.fromEntries((playersCache||[]).map(p=>[p.id,p.name]));
+  const list = (myActs||[]).map(a=>{
+    const label = {TOAST:"🥂 Toast", COUP_FOURRE:"💥 Coup fourré", ENQUETE:"🔎 Enquête", RAPPEL:"🕯️ Rappel"}[a.type] || a.type;
+    const tgt = nameById[a.target_id] || "—";
+    return `<div>• ${label} → ${tgt} — ${a.status} ${currentPhase==="secret" ? `<button data-cancel="${a.id}" class="badge">Retirer</button>`:""}</div>`;
+  }).join("");
+
+  const html = `<div style="margin-top:6px"><b>Actions programmées (toi)</b><div class="list">${list||"<span class='small'>Aucune</span>"}</div></div>`;
+
+  if (html !== lastPendingHTML) {
+    lastPendingHTML = html;
+    $("#myActionsBox").innerHTML = html;
+
+    document.querySelectorAll("[data-cancel]").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const id = btn.getAttribute("data-cancel");
+        await supa.from("game_actions").update({ status:"CANCELLED" }).eq("id", id);
+        renderMyPending(me);
+      });
+    });
+  }
+}
+
+async function renderMyInvestigations(me){
+  // Récupère les 3 dernières enquêtes de ce joueur
+  const { data: acts } = await supa.from("game_actions")
+    .select("id,type,payload,round,status,created_at")
+    .eq("room_id", roomId)
+    .eq("actor_id", me.id)
+    .eq("type","ENQUETE")
+    .order("created_at",{ascending:false})
+    .limit(3);
+
+  // Dernier résultat dispo (si la résolution a déjà écrit result_role)
+  const res = (acts||[]).find(a=>a.payload && a.payload.result_role);
+  let html = lastInvestHTML || "";
+
+  if(res){
+    const roleLabel = {PARRAIN:"Parrain", SOUS_CHEF:"Sous-chef", SOLDAT:"Soldat", INFILTRE:"Infiltré"}[res.payload.result_role] || res.payload.result_role;
+    html = `<div style="margin-top:6px"><b>Résultat d’enquête</b> : ${roleLabel}</div>`;
+  }
+  // Anti-flicker: ne pas effacer l'affichage si aucune nouvelle info
+  if(html !== lastInvestHTML){
+    lastInvestHTML = html;
+    $("#investResultBox").innerHTML = html;
+  }
+}
+
+async function refreshGroupTable(){
+  const { data: players } = await supa.from("game_players").select("name,glasses,cigars,status").eq("room_id", roomId).order("created_at",{ascending:true});
+  const rows = (players||[]).map(p=>`<tr><td>${p.name}</td><td>${p.status==='DEAD'?'☠️ Mort':'🟢 Vivant'}</td><td>${p.glasses} 🍷</td><td>${p.cigars} 🚬</td></tr>`).join("");
+  $("#groupBody").innerHTML = rows;
+}
+
+// ===== Phases (host only) =====
+function setPhaseUI(ph){
+  currentPhase = ph || "secret";
+  $("#phaseSel").value = currentPhase;
+
+  // Déclenche la résolution quand l’hôte passe en "Résolution des magouilles"
+  if(isHost && currentPhase === "resolve"){
+    resolveActions().catch(console.error);
+  }
+
+  // Met à jour l’UI chez tout le monde
+  refreshMe();
+  refreshGroupTable();
+}
+
+
+async function changePhase(){
+  if(!isHost) return alert("Seul l’hôte");
+  const ph = $("#phaseSel").value;
+  await supa.from("game_rooms").update({ phase: ph }).eq("id", roomId);
+  await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${phaseLabel(ph)}` });
+}
+
+async function nextPhase(){
+  if(!isHost) return alert("Seul l’hôte");
+  const { data: r } = await supa.from("game_rooms").select("phase,round").eq("id", roomId).single();
+  const order=["secret","resolve","debate","vote"];
+  const i=Math.max(0, order.indexOf(r.phase||"secret"));
+  const next=order[(i+1)%order.length];
+  const round=(next==="secret")?(r.round+1):r.round;
+
+  await supa.from("game_rooms").update({ phase: next, round }).eq("id", roomId);
+
+  if(next === "secret"){
+    // +1 cigare à tous les joueurs vivants
+    const { data: players } = await supa.from("game_players")
+      .select("id,status,cigars")
+      .eq("room_id", roomId);
+    if(players){
+      for(const p of players){
+        if(p.status !== "DEAD"){
+          await supa.from("game_players").update({ cigars: (p.cigars||0)+1 }).eq("id", p.id);
+        }
+      }
+    }
+    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Nouveau tour ${round}` });
+    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🎁 Tous les survivants gagnent un cigare." });
+    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🥂 Les toasts sont réinitialisés." });
+  }else{
+    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${phaseLabel(next)}` });
+  }
+}
+
+
+// ===== Reset =====
+async function resetLobby(){
+  if(!isHost) return alert("Seul l’hôte");
+  await supa.from("game_rooms").update({ status:"lobby", phase:"secret", round:1 }).eq("id", roomId);
+  await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:"🔁 Retour aux réglages." });
+  location.reload();
+}
+
+// ===== Log =====
+function appendLog(row){
+  const el=document.createElement("div");
+  el.className="small";
+  el.textContent = new Date(row.created_at).toLocaleTimeString()+" — "+row.text;
+  const box=$("#logList");
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+</script>
+</head>
+<body class="lobby">
+
+<!-- Landing -->
+<section id="landing">
+  <div class="wrap card">
+    <h1>La Famille — Créer ou Rejoindre</h1>
+    <div class="row">
+      <input id="pseudo" placeholder="Ton pseudo" maxlength="20" />
+      <input id="code" placeholder="Code (ex: AB7Q9)" />
+    </div>
+    <div class="row">
+      <button id="createBtn">Créer une salle</button>
+      <button id="joinBtn">Rejoindre</button>
+    </div>
+    <div class="small">Noms uniques par salle. Revenir avec le même nom te reconnecte.</div>
+  </div>
+</section>
+
+<!-- Lobby header -->
+<header id="lobby" class="card">
+  <div class="wrap">
+    <span class="badge">Salle <b id="lbCode">—</b></span>
+    <span class="badge">Joueurs <b id="lbCount">0</b></span>
+    <div id="playerChips" class="row"></div>
+    <span style="flex:1"></span>
+    <div id="hostControls" class="row" style="display:none">
+      <fieldset>
+        <legend>Init par rôle</legend>
+        <div class="row">
+          <span>Parrain:</span>
+          <select id="initParrainGl"><option>3</option><option selected>4</option><option>5</option></select>
+          <span>🍷</span>
+          <select id="initParrainCg"><option selected>1</option><option>2</option><option>3</option></select>
+          <span>🚬</span>
+        </div>
+        <div class="row">
+          <span>Sous-chef:</span>
+          <select id="initSousGl"><option>3</option><option selected>4</option><option>5</option></select>
+          <span>🍷</span>
+          <select id="initSousCg"><option selected>1</option><option>2</option><option>3</option></select>
+          <span>🚬</span>
+        </div>
+        <div class="row">
+          <span>Soldat:</span>
+          <select id="initSoldGl"><option selected>3</option><option>4</option><option>5</option></select>
+          <span>🍷</span>
+          <select id="initSoldCg"><option selected>0</option><option>1</option><option>2</option></select>
+          <span>🚬</span>
+        </div>
+        <div class="row">
+          <span>Infiltré:</span>
+          <select id="initInfGl"><option selected>3</option><option>4</option><option>5</option></select>
+          <span>🍷</span>
+          <select id="initInfCg"><option selected>0</option><option>1</option><option>2</option></select>
+          <span>🚬</span>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Répartition</legend>
+        <select id="optSoldiers">
+          <option value="0">Soldats: 0</option>
+          <option value="1">Soldats: 1</option>
+          <option value="2">Soldats: 2</option>
+          <option value="3">Soldats: 3</option>
+          <option value="4">Soldats: 4</option>
+          <option value="5">Soldats: 5</option>
+          <option value="6">Soldats: 6</option>
+          <option value="7">Soldats: 7</option>
+          <option value="8">Soldats: 8</option>
+          <option value="9">Soldats: 9</option>
+        </select>
+        <select id="optInfiltres">
+          <option value="0">Infiltrés: 0</option>
+          <option value="1">Infiltrés: 1</option>
+          <option value="2">Infiltrés: 2</option>
+          <option value="3">Infiltrés: 3</option>
+          <option value="4">Infiltrés: 4</option>
+          <option value="5">Infiltrés: 5</option>
+          <option value="6">Infiltrés: 6</option>
+        </select>
+      </fieldset>
+
+      <button id="assignBtn">Assigner & Convoquer</button>
+      <select id="phaseSel" title="Phase (hôte)">
+        <option value="secret">Préparation des magouilles</option>
+        <option value="resolve">Résolution des magouilles</option>
+        <option value="debate">Débat</option>
+        <option value="vote">Vote</option>
+      </select>
+      <button id="nextBtn">Suivant</button>
+      <button id="resetBtn" style="background:#444;color:#fff">Retour aux réglages</button>
+    </div>
+  </div>
+</header>
+
+<!-- Game -->
+<main>
+  <div class="grid">
+    <section class="section card">
+      <h2>Ta fiche</h2>
+      <div id="meCard" class="list small">Chargement…</div>
+    </section>
+
+    <section class="section card">
+      <h2>Tableau (groupe)</h2>
+      <table class="table">
+        <thead><tr><th>Joueur</th><th>Statut</th><th>Verres</th><th>Cigares</th></tr></thead>
+        <tbody id="groupBody"></tbody>
+      </table>
+    </section>
+
+    <section class="section card" style="grid-column:1/-1">
+      <h2>Journal public</h2>
+      <div id="logList" class="log small">—</div>
+    </section>
+  </div>
+</main>
+
+</body>
+</html>
