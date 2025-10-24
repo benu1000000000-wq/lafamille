@@ -1023,6 +1023,178 @@ if (els.resetBtn) els.resetBtn.onclick = resetToLobby;
     hideLegacyPanelsIfOnlineBarPresent();
   }
 })();
+/* === PATCH ONLINE — fix host join + realtime + start === */
+(function(){
+  // 0) Garde tes clés (doivent déjà être définies dans ton fichier)
+  if (!window.supabase) { console.warn('Supabase non chargé'); return; }
+  const SB_OK = (typeof SB_URL === 'string' && SB_URL && typeof SB_KEY === 'string' && SB_KEY);
+  if (!SB_OK) { console.warn('SB_URL / SB_KEY manquants'); return; }
+
+  // 1) (Ré)création propre du client + état local
+  window.supa = supabase.createClient(SB_URL, SB_KEY);
+  window.deviceId = localStorage.getItem('deviceId') || (crypto.randomUUID?.() || String(Math.random()).slice(2));
+  localStorage.setItem('deviceId', window.deviceId);
+
+  // 2) Petits helpers pour l’UI en haut
+  const els = {
+    code:    document.getElementById('roomCode'),
+    cnt:     document.getElementById('playerCount'),
+    players: document.getElementById('onlinePlayers'),
+    pseudo:  document.getElementById('pseudoInput'),
+    codeInp: document.getElementById('codeInput'),
+    create:  document.getElementById('createBtn'),
+    join:    document.getElementById('joinBtn'),
+    start:   document.getElementById('startBtn'),
+    reset:   document.getElementById('resetBtn'),
+  };
+
+  // 3) Unsubscribe propre si on patch plusieurs fois
+  try { window.__ch_room && window.supa.removeChannel(window.__ch_room); } catch(e){}
+  try { window.__ch_players && window.supa.removeChannel(window.__ch_players); } catch(e){}
+
+  // 4) Abonnements
+  function subscribeRoom(rid){
+    if (!rid) return;
+    window.__ch_room = supa.channel('room_'+rid)
+      .on('postgres_changes', { event:'*', schema:'public', table:'game_rooms', filter:'id=eq.'+rid }, payload=>{
+        const room = payload.new || payload.old;
+        updateRoomUI(room);
+      })
+      .subscribe();
+    // première synchro
+    supa.from('game_rooms').select('*').eq('id', rid).single().then(({data})=>{
+      if (data) updateRoomUI(data);
+    });
+  }
+
+  function subscribePlayers(rid){
+    if (!rid) return;
+    window.__ch_players = supa.channel('players_'+rid)
+      .on('postgres_changes', { event:'*', schema:'public', table:'game_players', filter:'room_id=eq.'+rid }, payload=>{
+        refreshPlayers(rid);
+      })
+      .subscribe();
+    refreshPlayers(rid);
+  }
+
+  async function refreshPlayers(rid){
+    const { data: players } = await supa.from('game_players')
+      .select('id,name,device_id,created_at')
+      .eq('room_id', rid).order('created_at',{ascending:true});
+    els.cnt && (els.cnt.textContent = players?.length ?? 0);
+    if (els.players) els.players.innerHTML = (players||[]).map(p=>`<span class="pname">${p.name}</span>`).join(' ');
+  }
+
+  // 5) Création / Join — corrigés
+  function randCode(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<5;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+
+  async function joinAsPlayer(rid, name){
+    const safe = name?.trim() || ('Joueur-'+window.deviceId.slice(0,4));
+    const { data: me, error } = await supa.from('game_players').insert({
+      room_id: rid, device_id: window.deviceId, name: safe
+    }).select().single();
+    if (error) { alert(error.message); return null; }
+    window.playerId = me.id;
+    return me;
+  }
+
+  window.createRoom = async function(){
+    const code = els?.codeInp?.value?.trim() || randCode();
+    const { data, error } = await supa.from('game_rooms').insert({
+      code, host_device_id: window.deviceId, status:'lobby', phase:'secret', round:1, settings: {}
+    }).select().single();
+    if (error) { 
+      if (String(error.message||'').includes('duplicate key')) { alert('Ce code existe déjà. Essaie un autre.'); }
+      else alert(error.message); 
+      return;
+    }
+    window.roomId = data.id; window.hostDeviceId = data.host_device_id;
+    els?.code && (els.code.textContent = data.code);
+    // ✅ Host s’auto-join TOUJOURS
+    await joinAsPlayer(window.roomId, els?.pseudo?.value);
+    // Subscriptions + première synchro
+    subscribeRoom(window.roomId);
+    subscribePlayers(window.roomId);
+    // Masquer l’ancien panneau local dev (doublons)
+    hideLegacyPanelsIfOnlineBarPresent();
+  };
+
+  window.joinRoom = async function(){
+    const code = els?.codeInp?.value?.trim();
+    if (!code) return alert('Entre un code de salon.');
+    const { data: room, error } = await supa.from('game_rooms').select('*').eq('code', code).maybeSingle();
+    if (error || !room) return alert('Salon introuvable.');
+    window.roomId = room.id; window.hostDeviceId = room.host_device_id;
+    els?.code && (els.code.textContent = room.code);
+    await joinAsPlayer(window.roomId, els?.pseudo?.value);
+    subscribeRoom(window.roomId);
+    subscribePlayers(window.roomId);
+    hideLegacyPanelsIfOnlineBarPresent();
+  };
+
+  window.startGame = async function(){
+    if (!window.roomId) return alert('Aucun salon.');
+    if (window.hostDeviceId !== window.deviceId) return alert('Seul l’hôte peut lancer.');
+    const { error } = await supa.from('game_rooms').update({ status:'enCours' }).eq('id', window.roomId);
+    if (error) { alert(error.message); return; }
+    // Fallback local si l’event realtime tarde
+    const { data: room2 } = await supa.from('game_rooms').select('*').eq('id', window.roomId).single();
+    if (room2) updateRoomUI(room2);
+  };
+
+  window.resetToLobby = async function(){
+    if (!window.roomId) return alert('Aucun salon.');
+    if (window.hostDeviceId !== window.deviceId) return alert('Seul l’hôte peut réinitialiser.');
+    await supa.from('game_rooms').update({ status:'lobby', phase:'secret', round:1 }).eq('id', window.roomId);
+    const { data: room2 } = await supa.from('game_rooms').select('*').eq('id', window.roomId).single();
+    if (room2) updateRoomUI(room2);
+  };
+
+  // 6) Bascule UI (host -> play) + masque l’ancien panneau local
+  function hideLegacyPanelsIfOnlineBarPresent(){
+    const onlineBar = document.getElementById('onlineBar');
+    if (!onlineBar) return;
+    const headings = Array.from(document.querySelectorAll('h1,h2,h3'));
+    headings.forEach(h=>{
+      const txt = (h.textContent||'').trim().toLowerCase();
+      if (txt === 'salon' || txt === 'joueurs confirmés' || txt === 'salon & joueurs') {
+        const sec = h.closest('section,div,article,.card,.panel');
+        (sec || h).style.display = 'none';
+      }
+    });
+    Array.from(document.querySelectorAll('button')).forEach(b=>{
+      const t = (b.textContent||'').trim().toLowerCase();
+      if (t.includes('convoquer la famille') && !onlineBar.contains(b)) b.style.display = 'none';
+    });
+  }
+
+  // 7) Sur update room → switch visuel
+  const _prevUpdate = window.updateRoomUI;
+  window.updateRoomUI = function(room){
+    // mode visuel
+    if (room?.status === 'enCours') {
+      document.documentElement.setAttribute('data-mode','play');
+      const phone = document.getElementById('phoneContent');
+      if (phone) phone.scrollIntoView({behavior:'smooth', block:'start'});
+    } else {
+      document.documentElement.setAttribute('data-mode','host');
+    }
+    // boutons visibles selon rôle
+    const isHost = (window.hostDeviceId === window.deviceId);
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    if (startBtn) startBtn.style.display = (isHost && room?.status === 'lobby') ? 'inline-block' : 'none';
+    if (resetBtn)  resetBtn.style.display  = (isHost && room?.status !== 'lobby') ? 'inline-block' : 'none';
+    // laisser la logique existante faire son taf si elle existe
+    if (typeof _prevUpdate === 'function') { try { _prevUpdate(room); } catch(e){} }
+  };
+
+  // 8) Rebranche les boutons de la barre online (au cas où)
+  if (els.create) els.create.onclick = window.createRoom;
+  if (els.join)   els.join.onclick   = window.joinRoom;
+  if (els.start)  els.start.onclick  = window.startGame;
+  if (els.reset)  els.reset.onclick  = window.resetToLobby;
+})();
 </script>
 
 </body>
