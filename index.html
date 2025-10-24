@@ -58,6 +58,7 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script>
   async function resolveActions(){
+  // 1) Charger actions du tour
   const round = await getCurrentRound();
   const { data: acts } = await supa.from("game_actions")
     .select("*")
@@ -71,6 +72,7 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
     return;
   }
 
+  // 2) Calcul des toasts par cible
   const toastsByTarget = {};
   for(const a of acts.filter(a=>a.type==="TOAST")){
     if(!a.target_id) continue;
@@ -80,14 +82,17 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
     await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🥂 Les toasts ont été appliqués." });
   }
 
+  // 3) Appliquer les coups fourrés
   for(const a of acts.filter(a=>a.type==="COUP_FOURRE")){
     if(!a.target_id) continue;
+    // état courant de la cible
     const { data: target } = await supa.from("game_players").select("*").eq("id", a.target_id).single();
     if(!target || target.status==="DEAD") continue;
 
     let shields = toastsByTarget[a.target_id] || 0;
     const raw = 3;
     const dmg = Math.max(0, raw - Math.max(0, shields));
+    // consommer les toasts
     const consumed = Math.min(shields, raw);
     toastsByTarget[a.target_id] = Math.max(0, shields - consumed);
 
@@ -97,13 +102,15 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
     await supa.from("game_players").update({ glasses:newGlasses, status:newStatus }).eq("id", target.id);
 
     if(dmg>0){
-      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:\`💥 \${target.name} a vacillé après un coup fourré.\` });
+      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`💥 ${target.name} a vacillé après un coup fourré.` });
     }
     if(newStatus==="DEAD"){
-      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:\`🌑 \${target.name} est tombé dans la nuit.\` });
+      await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`🌑 ${target.name} est tombé dans la nuit.` });
     }
   }
 
+  // 4) Rappeler à la table
+  // On récupère les paramètres init par rôle depuis settings
   const { data: room } = await supa.from("game_rooms").select("settings").eq("id", roomId).single();
   const init = room?.settings?.init || {};
   for(const a of acts.filter(a=>a.type==="RAPPEL")){
@@ -114,9 +121,10 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
     const initGlasses = (init[roleKey]?.glasses) ?? 3;
 
     await supa.from("game_players").update({ status:"ALIVE", glasses:initGlasses }).eq("id", t.id);
-    await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:\`🕯️ \${t.name} a été rappelé à la table.\` });
+    await supa.from("game_log").insert({ room_id: roomId, kind:"effect", text:`🕯️ ${t.name} a été rappelé à la table.` });
   }
 
+  // 5) Enquêtes : écrire les résultats privés
   for(const a of acts.filter(a=>a.type==="ENQUETE")){
     if(!a.target_id) continue;
     const { data: t } = await supa.from("game_players").select("role").eq("id", a.target_id).single();
@@ -126,26 +134,28 @@ legend{padding:0 6px;color:var(--muted);font-size:12px}
     await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🔎 Une enquête a porté ses fruits." });
   }
 
+  // 6) Marquer résolues
   await supa.from("game_actions").update({ status:"RESOLVED" }).eq("room_id", roomId).eq("round", round).eq("status","PENDING");
+
+  // 7) Fin : réinit toasts (c’est implicite car non stockés en DB) → message à l’entrée du tour suivant
 }
 
-const SB_URL = "https://yogpjqdgpquomgtbcvxu.supabase.co";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvZ3BqcWRncHF1b21ndGJjdnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMDc2MjgsImV4cCI6MjA3Njg4MzYyOH0.sK1DDyTPZZMAl4HbeigejK4cgydNFS68UjmB7JgbweA";
+const SB_URL = "https://yogpjqdgpquomgtbcvxu.supabase.co";   // ← remplace par ton URL Supabase
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlvZ3BqcWRncHF1b21ndGJjdnh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMDc2MjgsImV4cCI6MjA3Njg4MzYyOH0.sK1DDyTPZZMAl4HbeigejK4cgydNFS68UjmB7JgbweA";   // ← remplace par ta anon public key
 
 let supa = null;
 const deviceId = localStorage.getItem("deviceId") || (crypto.randomUUID?.() || String(Math.random()).slice(2));
 localStorage.setItem("deviceId", deviceId);
 
 let roomId=null, roomCode=null, hostDeviceId=null, mePlayerId=null, isHost=false;
-let chRoom=null, chPlayers=null, chLog=null, pollTimer=null;
-let currentPhase = "secret";
+let chRoom=null, chPlayers=null, chLog=null, pollTimer=null;let currentPhase = "secret";
 let playersCache = [];
-let lastPendingHTML = "";
+let lastPendingHTML = ""; // anti-flicker memo           // cache pour listes de cibles
 
 function $(s){return document.querySelector(s)}
 function $all(s){return Array.from(document.querySelectorAll(s))}
 function randCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s="";for(let i=0;i<5;i++)s+=A[Math.floor(Math.random()*A.length)];return s}
-function labelPhase(ph){return {secret:"Préparation des magouilles", resolve:"Résolution des magouilles", debate:"Débat", vote:"Vote"}[ph] || ph;}
+function phaseLabel(ph){return {secret:"Préparation des magouilles", resolve:"Résolution des magouilles", debate:"Débat", vote:"Vote"}[ph] || ph;}
 
 document.addEventListener("DOMContentLoaded", async ()=>{
   if(!SB_URL||!SB_KEY){ alert("Configure SB_URL/SB_KEY en haut du fichier."); return; }
@@ -159,6 +169,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
   $("#resetBtn").onclick = resetLobby;
 });
 
+// ===== Create / Join =====
 async function createRoom(){
   const pseudo = $("#pseudo").value.trim();
   let code = $("#code").value.trim();
@@ -199,6 +210,7 @@ async function upsertPlayer(name, asHost){
   localStorage.setItem("playerName", name);
 }
 
+// ===== Lobby =====
 function enterLobby(){
   $("#landing").style.display="none";
   $("#lobby").style.display="block";
@@ -225,7 +237,7 @@ function subscribeRoom(){
     .on("postgres_changes",{event:"*",schema:"public",table:"game_rooms",filter:"id=eq."+roomId}, payload=>{
       const r = payload.new || payload.old;
       if(r.status==="started") enterGame();
-      if(r.phase && r.phase!==currentPhase) setPhaseUI(r.phase);
+      if(r.phase) setPhaseUI(r.phase);
     })
     .subscribe();
   syncRoomPhase();
@@ -235,7 +247,7 @@ async function syncRoomPhase(){
   const { data: r } = await supa.from("game_rooms").select("status,phase,round").eq("id", roomId).single();
   if(!r) return;
   if(r.status==="started") enterGame();
-  if(r.phase && r.phase!==currentPhase) setPhaseUI(r.phase||"secret");
+  setPhaseUI(r.phase||"secret");
 }
 
 function subscribePlayers(){
@@ -244,6 +256,7 @@ function subscribePlayers(){
     .on("postgres_changes",
       { event:"*", schema:"public", table:"game_players" },
       payload => {
+        // filtre côté client pour ne garder que la salle courante
         const affected = payload.new?.room_id ?? payload.old?.room_id;
         if(affected === roomId){
           refreshPlayers();
@@ -258,12 +271,7 @@ function subscribePlayers(){
 function subscribeLog(){
   if(chLog) supa.removeChannel(chLog);
   chLog = supa.channel("log_"+roomId)
-    .on("postgres_changes",{event:"*",schema:"public",table:"game_log"}, payload=> {
-      const row = payload.new || payload.old;
-      if(row.room_id === roomId && payload.eventType === "INSERT"){
-        appendLog(row);
-      }
-    })
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"game_log",filter:"room_id=eq."+roomId}, payload=> appendLog(payload.new))
     .subscribe();
   supa.from("game_log").select("*").eq("room_id", roomId).order("created_at",{ascending:true}).then(({data})=>{
     $("#logList").innerHTML="";
@@ -281,7 +289,7 @@ async function refreshPlayers(){
   playersCache = players || [];
 
   $("#lbCount").textContent = players?.length || 0;
-  $("#playerChips").innerHTML = (players||[]).map(p=>\`<span class="chip">\${p.is_host?'👑 ':''}\${p.name}\${p.status==='DEAD'?' ☠️':''}\${isHost?\` <span class="kick" data-id="\${p.id}" title="Retirer">✕</span>\`:''}</span>\`).join(" ");
+  $("#playerChips").innerHTML = (players||[]).map(p=>`<span class="chip">${p.is_host?'👑 ':''}${p.name}${p.status==='DEAD'?' ☠️':''}${isHost?` <span class="kick" data-id="${p.id}" title="Retirer">✕</span>`:''}</span>`).join(" ");
 }
 
 document.addEventListener("click", async (e)=>{
@@ -298,6 +306,8 @@ document.addEventListener("click", async (e)=>{
   }
 });
 
+
+// ===== Assign & Start =====
 function getLobbySettings(){
   return {
     init: {
@@ -343,6 +353,7 @@ async function assignAndStart(){
   enterGame();
 }
 
+// ===== Game =====
 function enterGame(){
   document.body.classList.toggle('host', isHost);
   document.documentElement.classList.remove("lobby");
@@ -371,6 +382,7 @@ async function refreshMe(){
   const roleLabel = {PARRAIN:"Parrain", SOUS_CHEF:"Sous-chef", SOLDAT:"Soldat", INFILTRE:"Infiltré"}[me.role||""] || "—";
   const canActNow = (currentPhase === "secret") && (me.status !== "DEAD");
 
+  // Anti‑flicker : si on clique/ouvre un select dans #meCard, ne pas rerender tout le bloc
   const interacting = document.activeElement && $("#meCard") && $("#meCard").contains(document.activeElement);
   if(interacting){
     renderMyPending(me);
@@ -402,7 +414,7 @@ async function refreshMe(){
   $("#meCard").innerHTML = `
     <div class="row-between">
       <div><b>${myName}</b> — <span class="badge">${roleLabel}</span></div>
-      <div class="small">Phase : ${({secret:"Préparation des magouilles",resolve:"Résolution des magouilles",debate:"Débat",vote:"Vote"})[currentPhase]}</div>
+      <div class="small">Phase : ${phaseLabel(currentPhase)}</div>
     </div>
 
     <div class="row" style="margin-top:8px">
@@ -474,6 +486,7 @@ async function submitAction(me, type, targetId, parrainFree=false){
 
   const round = await getCurrentRound();
 
+  // Empêcher le toast gratuit 2x
   if(type==="TOAST" && me.role==="PARRAIN" && parrainFree){
     const { data: already } = await supa.from("game_actions")
       .select("id").eq("room_id",roomId).eq("actor_id",me.id)
@@ -481,6 +494,7 @@ async function submitAction(me, type, targetId, parrainFree=false){
     if((already||[]).length>0){ alert("Toast gratuit déjà utilisé ce tour."); return; }
   }
 
+  // Débiter les cigares tout de suite (pour éviter overspend)
   if(cost>0){
     await supa.from("game_players").update({ cigars: me.cigars - cost }).eq("id", me.id);
     me.cigars -= cost;
@@ -491,6 +505,7 @@ async function submitAction(me, type, targetId, parrainFree=false){
     room_id: roomId, actor_id: me.id, target_id: targetId, type, round, payload, status:"PENDING"
   });
 
+  // journal neutre
   const neutral = {
     TOAST:      "🥂 Un toast a été porté en secret.",
     COUP_FOURRE:"💥 Un coup fourré se prépare dans l’ombre.",
@@ -524,18 +539,18 @@ async function renderMyPending(me){
 
   const html = `<div style="margin-top:6px"><b>Actions programmées (toi)</b><div class="list">${list||"<span class='small'>Aucune</span>"}</div></div>`;
 
-  if(html !== lastPendingHTML){
+  if (html !== lastPendingHTML) {
     lastPendingHTML = html;
     $("#myActionsBox").innerHTML = html;
-  }
 
-  document.querySelectorAll("[data-cancel]").forEach(btn=>{
-    btn.addEventListener("click", async ()=>{
-      const id = btn.getAttribute("data-cancel");
-      await supa.from("game_actions").update({ status:"CANCELLED" }).eq("id", id);
-      renderMyPending(me);
+    document.querySelectorAll("[data-cancel]").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const id = btn.getAttribute("data-cancel");
+        await supa.from("game_actions").update({ status:"CANCELLED" }).eq("id", id);
+        renderMyPending(me);
+      });
     });
-  });
+  }
 }
 
 async function renderMyInvestigations(me){
@@ -562,21 +577,27 @@ async function refreshGroupTable(){
   $("#groupBody").innerHTML = rows;
 }
 
+// ===== Phases (host only) =====
 function setPhaseUI(ph){
   currentPhase = ph || "secret";
   $("#phaseSel").value = currentPhase;
+
+  // Déclenche la résolution quand l’hôte passe en "Résolution des magouilles"
   if(isHost && currentPhase === "resolve"){
     resolveActions().catch(console.error);
   }
+
+  // Met à jour l’UI chez tout le monde
   refreshMe();
   refreshGroupTable();
 }
+
 
 async function changePhase(){
   if(!isHost) return alert("Seul l’hôte");
   const ph = $("#phaseSel").value;
   await supa.from("game_rooms").update({ phase: ph }).eq("id", roomId);
-  await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${labelPhase(ph)}` });
+  await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${phaseLabel(ph)}` });
 }
 
 async function nextPhase(){
@@ -590,24 +611,15 @@ async function nextPhase(){
   await supa.from("game_rooms").update({ phase: next, round }).eq("id", roomId);
 
   if(next === "secret"){
-    const { data: players } = await supa.from("game_players")
-      .select("id,cigars,status")
-      .eq("room_id", roomId);
-    if(players){
-      for(const p of players){
-        if(p.status !== "DEAD"){
-          await supa.from("game_players").update({ cigars: (p.cigars||0)+1 }).eq("id", p.id);
-        }
-      }
-    }
     await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Nouveau tour ${round}` });
-    await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🎁 Tous les survivants gagnent un cigare." });
     await supa.from("game_log").insert({ room_id: roomId, kind:"info", text:"🥂 Les toasts sont réinitialisés." });
   }else{
-    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${labelPhase(next)}` });
+    await supa.from("game_log").insert({ room_id: roomId, kind:"system", text:`⏭️ Phase: ${phaseLabel(next)}` });
   }
 }
 
+
+// ===== Reset =====
 async function resetLobby(){
   if(!isHost) return alert("Seul l’hôte");
   await supa.from("game_rooms").update({ status:"lobby", phase:"secret", round:1 }).eq("id", roomId);
@@ -615,6 +627,7 @@ async function resetLobby(){
   location.reload();
 }
 
+// ===== Log =====
 function appendLog(row){
   const el=document.createElement("div");
   el.className="small";
@@ -627,6 +640,7 @@ function appendLog(row){
 </head>
 <body class="lobby">
 
+<!-- Landing -->
 <section id="landing">
   <div class="wrap card">
     <h1>La Famille — Créer ou Rejoindre</h1>
@@ -642,6 +656,7 @@ function appendLog(row){
   </div>
 </section>
 
+<!-- Lobby header -->
 <header id="lobby" class="card">
   <div class="wrap">
     <span class="badge">Salle <b id="lbCode">—</b></span>
@@ -719,6 +734,7 @@ function appendLog(row){
   </div>
 </header>
 
+<!-- Game -->
 <main>
   <div class="grid">
     <section class="section card">
