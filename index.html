@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<title>La Famille – Whisky Cigar v1.4</title>
+<meta content="#111" name="theme-color"/>
+<style>
+    :root { --bg:#0f0f12; --panel:#17171b; --muted:#a7a7b3; --acc:#caa66a; --danger:#e76f51; --ok:#2a9d8f; --text:#f5f5f7; --shadow: 0 6px 24px rgba(0,0,0,.35); --radius:14px; }
+    *{box-sizing:border-box}
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text);
+      font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;}
+    a{color:var(--acc)}
+    header{padding:14px 18px; display:flex; align-items:center; gap:12px; position:sticky; top:0;
+      background:linear-gradient(0deg, transparent, rgba(15,15,18,.92)); backdrop-filter:saturate(1.2) blur(8px); z-index:10}
+    header h1{font-size:20px; margin:0; letter-spacing:.3px}
+    header .pill{margin-left:auto; padding:6px 12px; border:1px solid #333; border-radius:999px; color:var(--muted)}
+    main{padding:18px; max-width:1200px; margin:0 auto}
+    .grid{display:grid; gap:16px}
+    @media(min-width:1100px){ .grid{ grid-template-columns: 1.5fr 1fr } }
+    .card{background:var(--panel); border:1px solid #22232a; border-radius:var(--radius); padding:16px; box-shadow:var(--shadow)}
+    .card h2{margin:0 0 10px 0; font-size:18px}
+    .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    .row > *{flex:1}
+    input, select, button, textarea{
+      background:#101015; border:1px solid #2a2b33; color:var(--text);
+      border-radius:12px; padding:10px 12px; outline:none; width:100%;
+    }
+    input[type=number]{appearance:textfield}
+    textarea{min-height:90px; resize:vertical}
+    button{cursor:pointer; transition:.15s transform ease}
+    button:hover{transform:translateY(-1px)}
+    .btn{background:#17181f; border-color:#333}
+    .btn-acc{background:var(--acc); color:#120d05; border:none; font-weight:600}
+    .btn-ok{background:var(--ok); border:none; font-weight:600}
+    .btn-danger{background:var(--danger); border:none; font-weight:600}
+    .list{display:flex; flex-direction:column; gap:8px}
+    .item{display:flex; gap:10px; align-items:center; background:#121218; border:1px solid #23232b; padding:10px; border-radius:12px}
+    .badge{padding:2px 8px; border-radius:999px; background:#202029; color:#c7c7d4; font-size:12px; border:1px solid #2b2c33}
+    .muted{color:var(--muted)}
+    .log{max-height:240px; overflow:auto; padding:10px; background:#0e0e12; border-radius:10px; border:1px solid #24252c}
+    .kpi{display:flex; gap:12px; flex-wrap:wrap}
+    .kpi .box{background:#141419; border:1px solid #24252c; padding:10px 12px; border-radius:10px; min-width:120px}
+    .pv{font-weight:700}
+    .table{width:100%; border-collapse:collapse}
+    .table th,.table td{border-bottom:1px solid #23242b; padding:8px; text-align:left}
+    .table th{color:var(--muted); font-weight:600}
+    .section-title{margin-top:8px; margin-bottom:4px; font-weight:700; color:#e7e7ea}
+    small.hint{color:#9aa; display:block; margin-top:-6px}
+    #toast{position:fixed; bottom:16px; right:16px; background:#17181f; border:1px solid #333; padding:10px 12px; border-radius:12px; opacity:0; pointer-events:none; transition:.2s}
+    #toast.show{opacity:1}
+    .dot{display:inline-block; width:10px; height:10px; border-radius:50%; border:2px solid #4b5563; margin-right:6px; vertical-align:middle}
+    .dot.green{background:#10b981; border-color:#10b981}
+    .dot.hollow{background:transparent; border-color:#6b7280}
+    .dot.red{background:transparent; border-color:#ef4444}
+  </style>
+<style>
+/* === Online shell (no dev UI) === */
+#landingGate{position:fixed;inset:0;background:#0b0b0c;color:#fff;display:flex;align-items:center;justify-content:center;z-index:9999}
+#landingGate .card{background:#16161a;border:1px solid #2a2a2e;border-radius:14px;max-width:520px;width:92%;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.4);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+#landingGate h1{margin:0 0 6px 0;font-size:20px}
+#landingGate .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#landingGate input{flex:1;min-width:140px;background:#111114;color:#fff;border:1px solid #2a2a2e;border-radius:10px;padding:10px}
+#landingGate button{background:#e08b2c;border:0;color:#111;padding:10px 14px;border-radius:10px;cursor:pointer;font-weight:600}
+#landingGate .muted{opacity:.7;font-size:12px;margin-top:4px}
+
+#salonBar{position:sticky;top:0;background:#111;color:#fff;z-index:9000;border-bottom:1px solid #2a2a2e;display:none}
+#salonBar .wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px}
+.badge{background:#222;padding:5px 10px;border-radius:999px;font-size:12px}
+#playerChips{display:flex;gap:6px;flex-wrap:wrap}
+#playerChips .chip{background:#1b1b1f;border:1px solid #2a2a2e;color:#ddd;padding:4px 8px;border-radius:999px;font-size:12px}
+
+html.mode-play #landingGate{display:none}
+html.mode-lobby #landingGate{display:flex}
+html.mode-lobby #salonBar{display:flex}
+html.mode-play  #salonBar{display:flex}
+
+.hide-legacy{display:none !important}
+</style>
+</head>
+<body>
+<header>
+<h1>🕴️ La Famille — Prototype v1.3.7</h1>
+<span class="pill" id="gameMeta">Aucun salon</span><span class="pill" id="jsStatus" style="display:none; margin-left:8px; border-color:#1f6; color:#9ff">JS OK</span><button class="btn-acc" id="headerRestart" style="margin-left:8px; display:none">🔁 Nouvelle partie</button><button class="btn" id="purgeBtn" style="margin-left:8px;">🧹 Purger les données</button><button class="btn" id="reinitBtn" style="margin-left:8px;">⟳ Forcer l’init</button>
+</header><div id="errBanner" style="display:none; background:#3b0a0a; border:1px solid #7f1d1d; color:#ffdada; padding:10px 14px; margin:10px; border-radius:10px;"><b>Erreur JavaScript :</b> <span id="errMsg">—</span></div>
+<main class="grid">
+<section class="card">
+<h2>1) Salon &amp; Joueurs</h2>
+<div class="row">
+<input id="roomName" placeholder="Nom du salon (ex: Whisky-Cigar #1)"/>
+<button class="btn-acc" id="createRoomBtn">Créer/Charger</button>
+</div>
+<div class="row">
+<input id="playerName" placeholder="Nom du joueur"/>
+<button class="btn" id="addPlayerBtn">Ajouter</button>
+</div>
+<div class="list" id="playersList"></div>
+<div class="row">
+<button class="btn-ok" id="confirmPlayersBtn">✅ Confirmer les joueurs</button>
+<button class="btn" id="unlockPlayersBtn">🔓 Modifier les joueurs</button>
+<button class="btn-danger" id="clearRoomBtn">Réinitialiser</button>
+</div>
+<div class="section-title">Répartition Infiltrés / Soldats</div>
+<div class="row">
+<div>
+<label class="muted">Joueurs confirmés</label>
+<input disabled="" id="lockedCount" type="number"/>
+
+</div>
+<div>
+<label class="muted">Infiltrés</label>
+<input id="cfgMoles" min="0" type="number" value="2"/>
+</div>
+<div>
+<label class="muted">Soldats</label>
+<input id="cfgSoldiers" min="0" type="number" value="0"/>
+</div>
+</div>
+
+<div class="section-title">🍷 par rôle (appliqués à l’assignation)</div>
+<div class="row">
+<div><label class="muted">🍷 Parrain</label><input id="cfgHPParrain" min="1" type="number" value="4"/></div>
+<div><label class="muted">🍷 Sous-chef</label><input id="cfgHPSous" min="1" type="number" value="4"/></div>
+<div><label class="muted">🍷 Soldat</label><input id="cfgHPSoldat" min="1" type="number" value="3"/></div>
+<div><label class="muted">🍷 Infiltré</label><input id="cfgHPTaupe" min="1" type="number" value="3"/></div>
+</div>
+<div class="row">
+<button class="btn-acc" id="assignRolesBtn">Assigner les rôles (verrouillés)</button>
+</div>
+<div class="row">
+<button class="btn-acc" id="startGameBtn">🚀 Convoquer la Famille</button>
+<small class="muted"></small>
+</div>
+</section>
+<section class="card">
+<h2>2) Tableau (groupe)</h2>
+<div class="row">
+<select id="phaseSel">
+<option value="secret">Préparation des magouilles</option>
+<option value="resolve">Résolution des magouilles</option>
+<option value="debate">Débat</option>
+<option value="vote">Vote</option>
+<option value="end">Fin de tour</option>
+</select>
+<button class="btn" id="nextPhaseBtn">Suivant</button>
+</div>
+<table class="table" id="tablePublic"><thead><tr><th>Joueur</th><th>Verres 🍷</th><th>Cigares 🚬</th><th>Statut</th></tr></thead><tbody></tbody></table>
+<div id="voteStatusPanel" style="margin-top:12px; display:none">
+<h3>État des votes (phase Vote)</h3>
+<div class="list" id="voteStatusList"></div>
+<small class="muted">• pastille verte = a voté • pastille creuse = en attente • pastille rouge = vote retiré</small>
+</div>
+<div id="endBanner" style="display:none; margin:12px 0; padding:12px; border:1px solid #2b2c33; border-radius:12px; background:#13131a;"><div style="margin-bottom:8px;">🏆 <b>Partie terminée</b> — choisissez <i>Nouvelle partie</i> pour relancer.</div><button class="btn-acc" id="restartBtn">🔁 Nouvelle partie</button></div><h3>Journal public</h3><div class="log" id="publicLog"></div>
+</section>
+<section class="card">
+<h2>3) Mon Téléphone</h2>
+<div class="row">
+<select id="selfPlayerSel"></select>
+<button class="btn" id="viewAsBtn">Voir</button>
+</div>
+<div class="card"><div class="stack" id="phoneContent"></div></div>
+</section>
+</main>
+<div id="toast">Action</div>
+<script>
+(function(){
+  const errBanner = () => document.getElementById('errBanner');
+  const errMsg = () => document.getElementById('errMsg');
+  function showErr(msg){
+    try{
+      const b = errBanner(); const m = errMsg();
+      if(b && m){ b.style.display='block'; m.textContent = String(msg||''); }
+    }catch(e){}
+    console.error('[LaFamille] JS error:', msg);
+  }
+  window.addEventListener('error', (e)=>{ showErr(e.message || 'Erreur inconnue'); });
+  window.addEventListener('unhandledrejection', (e)=>{ showErr((e.reason && e.reason.message) || String(e.reason) || 'Rejet non géré'); });
+
+  // Mark init when DOM is ready
+  function markOK(){
+    const badge = document.getElementById('jsStatus');
+    if(badge){ badge.style.display='inline-block'; }
+  }
+  document.addEventListener('DOMContentLoaded', markOK);
+
+  // Re-init button: try to wire core handlers again if something prevented it
+  function tryReinit(){
+    try{
+      // Click handlers that might not be bound due to earlier script errors
+      document.getElementById('createRoomBtn')?.addEventListener('click', ()=>{ ensureRoom(document.getElementById('roomName').value.trim()||'Salon') });
+      document.getElementById('addPlayerBtn')?.addEventListener('click', ()=>{ addPlayer(document.getElementById('playerName').value||''); document.getElementById('playerName').value=''; });
+      document.getElementById('confirmPlayersBtn')?.addEventListener('click', confirmPlayers);
+      document.getElementById('unlockPlayersBtn')?.addEventListener('click', unlockPlayers);
+      document.getElementById('assignRolesBtn')?.addEventListener('click', assignRoles);
+      document.getElementById('startGameBtn')?.addEventListener('click', startGame);
+      document.getElementById('clearRoomBtn')?.addEventListener('click', ()=>{ const R=current(); if(!R)return; delete S.rooms[S.current]; S.current=null; Store.save(S); refresh(); });
+      document.getElementById('nextPhaseBtn')?.addEventListener('click', nextPhase);
+      document.getElementById('phaseSel')?.addEventListener('change', (e)=>{ const R=current(); if(!R) return; R.phase=e.target.value; Store.save(S); refresh(); });
+      document.getElementById('viewAsBtn')?.addEventListener('click', ()=>{ renderPhone(document.getElementById('selfPlayerSel').value) });
+      document.getElementById('purgeBtn')?.addEventListener('click', purgeAll);
+      document.getElementById('restartBtn')?.addEventListener('click', restartGame);
+      document.getElementById('headerRestart')?.addEventListener('click', restartGame);
+      markOK();
+      console.log('[LaFamille] Re-init attempted.');
+    }catch(e){
+      showErr(e.message||e);
+    }
+  }
+  window.tryReinit = tryReinit;
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('reinitBtn')?.addEventListener('click', tryReinit);
+  });
+})();
+</script>
+<script>
+const Store={key:'lafamille_v1_3_8b',load(){try{return JSON.parse(localStorage.getItem(this.key)||'{}')}catch(e){return{}}},save(s){localStorage.setItem(this.key,JSON.stringify(s))}};
+let S=Store.load(); if(!S.rooms) S.rooms={};
+
+const ROLE={PARRAIN:'Parrain',SOUS:'Sous-chef',SOLDAT:'Soldat',TAUPE:'Infiltré'};
+const STATUS={ALIVE:'Vivant',DEAD:'Mort'};
+const PHASES=['secret','resolve','debate','vote','end'];
+
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [a[i],a[j]]=[a[j],a[i]] } return a }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400) }
+function sanitize(s){ return String(s).replace(/[&<>\\"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\\\"":"&quot;", "'":"&#39;" }[m])) }
+function current(){ return S.rooms[S.current]||null }
+function ensureRoom(name){
+  if(!S.rooms[name]){
+    S.rooms[name]={
+      name, players:[], started:false, round:0, phase:'secret', publicLog:[],
+      votes:{}, withdrawn:{},
+      locked:false, lockedCount:0, settings:{ moles:null, soldiers:null },
+      queue:{prot:[], exec:[], inv:[], res:[]},
+      shields:{},
+      meta:{parrainProtectRound:0}
+    };
+  }
+  S.current=name; Store.save(S); refresh();
+}
+
+function addPlayer(name){
+  const R=current(); if(!R||R.locked) return;
+  name=(name||'').trim(); if(!name) return;
+  if(R.players.find(p=>p.name.toLowerCase()===name.toLowerCase())){ toast('Nom déjà présent'); return }
+  R.players.push({id:crypto.randomUUID(), name, role:null, hp:3, tokens:0, status:STATUS.ALIVE, testament:null, pendingTestament:false, shields:0, investigatedBy:[]});
+  Store.save(S); refresh();
+}
+function removePlayer(id){ const R=current(); if(!R||R.locked) return; R.players = R.players.filter(p=>p.id!==id); Store.save(S); refresh(); }
+
+function confirmPlayers(){
+  const R=current(); if(!R) return;
+  const n=R.players.length; if(n<4){ toast('Minimum 4 joueurs'); return }
+  R.locked=true; R.lockedCount=n;
+  const remain=n-2; const m=Math.floor(remain/2);
+  R.settings.moles=m; R.settings.soldiers=remain-m;
+  R.publicLog.push(`🔒 Joueurs confirmés (${n}). Reste ${remain} places ⇒ Infiltrés ${R.settings.moles}, Soldats ${R.settings.soldiers}.`);
+  Store.save(S); refresh();
+}
+function unlockPlayers(){ const R=current(); if(!R) return; R.locked=false; R.lockedCount=0; R.settings.moles=null; R.settings.soldiers=null; R.publicLog.push('🔓 Joueurs modifiables.'); Store.save(S); refresh(); }
+
+function readHPInputs(){
+  return {
+    parrain: Math.max(1, parseInt(document.getElementById('cfgHPParrain').value||'4')),
+    sous:    Math.max(1, parseInt(document.getElementById('cfgHPSous').value||'4')),
+    soldat:  Math.max(1, parseInt(document.getElementById('cfgHPSoldat').value||'3')),
+    taupe:   Math.max(1, parseInt(document.getElementById('cfgHPTaupe').value||'3')),
+  };
+}
+
+function assignRoles(){
+  const R=current(); if(!R) return;
+  if(!R.locked){ toast('Confirme d’abord les joueurs'); return }
+  const n=R.lockedCount, remain=n-2;
+  const m=R.settings.moles, s=R.settings.soldiers;
+  if(m+s!==remain){ toast('Infiltrés + Soldats doit = joueurs confirmés − 2'); return }
+  const hp=readHPInputs();
+  R.players.forEach(p=>{ p.role=null; p.tokens=0; p.status=STATUS.ALIVE; p.testament=null; p.pendingTestament=false; p.shields=0; p.investigatedBy=[] });
+  const sh=shuffle([...R.players]);
+  const boss=sh.shift(); boss.role=ROLE.PARRAIN; boss.hp=hp.parrain;
+  const sous=sh.shift(); sous.role=ROLE.SOUS; sous.hp=hp.sous;
+  for(let i=0;i<m && sh.length;i++){ const t=sh.shift(); t.role=ROLE.TAUPE; t.hp=hp.taupe; }
+  for(let i=0;i<s && sh.length;i++){ const t=sh.shift(); t.role=ROLE.SOLDAT; t.hp=hp.soldat; }
+  R.meta.parrainProtectRound=0;
+  R.queue={prot:[], exec:[], inv:[], res:[]};
+  R.shields={}; R.votes={}; R.withdrawn={};
+  R.publicLog.push(`🎲 Rôles assignés — Infiltrés: ${m}, Soldats: ${s}. 🍷 (P ${hp.parrain}, S ${hp.sous}, So ${hp.soldat}, T ${hp.taupe}).`);
+  Store.save(S); refresh();
+}
+
+function startGame(){ const R=current(); if(!R) return; if(R.players.some(p=>!p.role)){ toast('Assigne les rôles d’abord'); return } R.started=true; R.round=1; R.phase='secret'; R.meta.parrainProtectRound=0; R.queue={prot:[], exec:[], inv:[], res:[]}; R.shields={}; R.votes={}; R.withdrawn={}; R.publicLog.push(`🚀 Partie lancée. Tour ${R.round}.`); Store.save(S); refresh(); }
+
+function getPlayer(R, pid){ return R.players.find(x=>x.id===pid) }
+function applyDamage(R, pid, dmg){
+  const p=getPlayer(R,pid); if(!p||p.status===STATUS.DEAD||dmg<=0) return {absorbed:0,dealt:0,died:false};
+  const shieldAvail = p.shields||0;
+  const absorbed = Math.min(dmg, shieldAvail);
+  p.shields = shieldAvail - absorbed;
+  const remain = dmg - absorbed;
+  let dealt = 0, died=false;
+  if(remain>0){
+    p.hp -= remain; dealt = remain;
+    if(p.hp<=0){ p.hp=0; p.status=STATUS.DEAD; died=true;
+      if(p.role===ROLE.PARRAIN){
+        const sous = R.players.find(x=>x.role===ROLE.SOUS && x.status===STATUS.ALIVE);
+        if(sous){ sous.role=ROLE.PARRAIN; R.publicLog.push(`👑 Héritage : un nouveau Parrain prend la tête.`); }
+        else { /* pas de sous-chef vivant */ }
+      }
+    }
+  }
+  return {absorbed, dealt, died};
+}
+function labelPhase(ph){ return ph==='secret'?'Préparation des magouilles': ph==='resolve'?'Résolution des magouilles': ph==='debate'?'Débat': ph==='vote'?'Vote':'Fin de tour' }
+
+/* --- Endgame checks --- */
+
+/* --- Restart helpers --- */
+function canRestart(R){
+  return R && R.locked && (R.settings && Number.isInteger(R.settings.moles) && Number.isInteger(R.settings.soldiers)) && R.players.length>=4;
+}
+function restartGame(){
+  const R=current(); if(!R) return;
+  if(!canRestart(R)){ toast('Configure le salon (confirmer joueurs & répartition) avant de relancer.'); return; }
+  // Re-assign roles with current settings & HP inputs, then start
+  // Essentially same flow as "assignRoles" + "startGame"
+  // Assign
+  const n=R.lockedCount, remain=n-2;
+  const m=R.settings.moles, s=R.settings.soldiers;
+  if(m+s!==remain){ toast('Infiltrés + Soldats ≠ joueurs confirmés − 2'); return }
+  const hp={
+    parrain: Math.max(1, parseInt(document.getElementById('cfgHPParrain').value||'4')),
+    sous:    Math.max(1, parseInt(document.getElementById('cfgHPSous').value||'4')),
+    soldat:  Math.max(1, parseInt(document.getElementById('cfgHPSoldat').value||'3')),
+    taupe:   Math.max(1, parseInt(document.getElementById('cfgHPTaupe').value||'3')),
+  };
+  R.players.forEach(p=>{ p.role=null; p.tokens=0; p.status=STATUS.ALIVE; p.testament=null; p.pendingTestament=false; p.shields=0; p.investigatedBy=[]; p.hp=3; });
+  const sh=[...R.players]; for(let i=sh.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [sh[i],sh[j]]=[sh[j],sh[i]] }
+  const boss=sh.shift(); boss.role=ROLE.PARRAIN; boss.hp=hp.parrain;
+  const sous=sh.shift(); sous.role=ROLE.SOUS; sous.hp=hp.sous;
+  for(let i=0;i<m && sh.length;i++){ const t=sh.shift(); t.role=ROLE.TAUPE; t.hp=hp.taupe; }
+  for(let i=0;i<s && sh.length;i++){ const t=sh.shift(); t.role=ROLE.SOLDAT; t.hp=hp.soldat; }
+  R.meta.parrainProtectRound=0;
+  R.queue={prot:[], exec:[], inv:[], res:[]};
+  R.shields={}; R.votes={}; R.withdrawn={};
+  R.publicLog.push(`🔁 Nouvelle partie — rôles réassignés (Infiltrés ${m}, Soldats ${s}).`);
+  // Start
+  R.started=true; R.round=1; R.phase='secret';
+  R.publicLog.push(`🚀 Partie lancée. Tour ${R.round}.`);
+  Store.save(S); refresh();
+}
+function checkEndGame(R){
+  if(!R.started) return false;
+  const alive = R.players.filter(p=>p.status===STATUS.ALIVE);
+  const anyInfiltré = alive.some(p=>p.role===ROLE.TAUPE);
+  const anyParrain = alive.some(p=>p.role===ROLE.PARRAIN);
+  const anySous = alive.some(p=>p.role===ROLE.SOUS);
+  // Victory Famille if no Infiltré alive
+  if(!anyInfiltré){
+    R.publicLog.push('🏆 Fin de la partie — Victoire : La Famille.');
+    R.started=false; return true;
+  }
+  // Victory Infiltrés if no Parrain and no Sous-chef alive
+  if(!anyParrain && !anySous){
+    R.publicLog.push('🏆 Fin de la partie — Victoire : Les Infiltrés.');
+    R.started=false; return true;
+  }
+  return false;
+}
+
+/* --- Phases --- */
+function nextPhase(){
+  const cur=current(); if(cur && !cur.started){ toast('Partie terminée. Utilise "Nouvelle partie".'); return; }
+  const R=current(); if(!R) return;
+  const old=R.phase;
+  const idx=PHASES.indexOf(R.phase);
+  R.phase=PHASES[(idx+1)%PHASES.length];
+
+  if(old==='secret' && R.phase==='resolve'){
+    let shieldsByTarget={};
+    R.queue.prot.forEach(a=>{ shieldsByTarget[a.target]=(shieldsByTarget[a.target]||0)+1; });
+    Object.entries(shieldsByTarget).forEach(([pid,count])=>{
+      const p=getPlayer(R,pid); if(!p || p.status===STATUS.DEAD) return;
+      p.shields = (p.shields||0) + count;
+    });
+    if(Object.keys(shieldsByTarget).length>0) R.publicLog.push(` 🥂 🥂 Les toasts ont été appliqués.`);
+
+    let dmgByTarget={};
+    R.queue.exec.forEach(a=>{ dmgByTarget[a.target]=(dmgByTarget[a.target]||0)+3; });
+    Object.entries(dmgByTarget).forEach(([pid, dmg])=>{
+      const p=getPlayer(R,pid); if(!p || p.status===STATUS.DEAD) return;
+      const res = applyDamage(R, pid, dmg);
+      if(res.died){
+        R.publicLog.push(`💀 ${p.name} a vidé son dernier 🍷.`);
+      }else if(res.dealt>0){
+        R.publicLog.push(`🗡️ ${p.name} a renversé trois 🍷 après un coup fourré (−${res.dealt} 🍷).`);
+      }else{
+        R.publicLog.push(` Une attaque nocturne a visé ${p.name} (boucliers actifs).`);
+      }
+    });
+
+R.queue.inv.forEach(a=>{
+      const actor=getPlayer(R,a.actor), t=getPlayer(R,a.target);
+      if(actor && t && actor.status===STATUS.ALIVE){
+        const tag=(t.role===ROLE.TAUPE)?'suspect':'loyal';
+        actor.investigatedBy.push({who:actor.id,target:t.id,result:tag, round:R.round});
+        R.publicLog.push(`🔍 Une enquête a porté ses fruits.`);
+      }
+    });
+
+    R.queue.res.forEach(a=>{
+      const t=getPlayer(R,a.target);
+      if(t && t.status===STATUS.DEAD){ t.status=STATUS.ALIVE; t.hp=1; t.pendingTestament=false; t.shields=0; R.publicLog.push(`⚰️ ${t.name} s’est fait servir un 🍷.`); }
+    });
+
+    R.queue={prot:[], exec:[], inv:[], res:[]};
+
+    // Endgame check after Resolution
+    if(checkEndGame(R)){
+      Store.save(S); refresh(); return;
+    }
+  }
+
+  if(old==='vote' && R.phase==='end'){
+    const aliveIds = R.players.filter(p=>p.status===STATUS.ALIVE).map(p=>p.id);
+    const aliveCount = aliveIds.length;
+    const votesEntries = Object.entries(R.votes||{}).filter(([voter,target])=>aliveIds.includes(voter) && aliveIds.includes(target));
+    const votesCast = votesEntries.length;
+    const quorum = Math.ceil(aliveCount/2);
+
+    if(votesCast < quorum){
+      R.publicLog.push('🗳️ Résultat du vote : pas assez de votes.');
+    } else {
+      const counts={};
+      for(const [,target] of votesEntries){ counts[target]=(counts[target]||0)+1 }
+      const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+      const [topId, topCount] = entries[0];
+      const tied = entries.filter(e=>e[1]===topCount).map(e=>e[0]);
+      const tgt = getPlayer(R, topId);
+      const majorityAlive = topCount > (aliveCount/2);
+      if(tied.length>1){
+        R.publicLog.push('🗳️ Résultat du vote : égalité, aucun effet.');
+      } else if(majorityAlive){
+        R.publicLog.push(`☠️ Résultat du vote : majorité atteinte → ${tgt.name} perd 🍷 3.`);
+        applyDamage(R, tgt.id, 3);
+      } else {
+        R.publicLog.push(`🗳️ Résultat du vote : ${tgt.name} est le plus visé → perd 🍷 1.`);
+        applyDamage(R, tgt.id, 1);
+      }
+    }
+    R.votes={}; R.withdrawn={};
+
+    // Endgame check after Vote
+    if(checkEndGame(R)){
+      Store.save(S); refresh(); return;
+    }
+  }
+
+  if(old==='end' && R.phase==='secret'){
+    if(!R.started){ Store.save(S); refresh(); return; } // if game ended, don't start a new round
+    R.round += 1;
+    R.players.forEach(p=>{ p.shields=0; });
+    R.meta.parrainProtectRound=0;
+    R.votes={}; R.withdrawn={};
+    R.players.forEach(p=>{ if(p.status===STATUS.ALIVE) p.tokens += 1 });
+    R.publicLog.push(`🔄 Nouveau tour : ${R.round}. Tout le monde gagne un cigare. 🥂 Les toasts sont réinitialisés.`);
+  }
+
+  R.publicLog.push(`➡️ Phase : ${labelPhase(R.phase)}.`);
+  Store.save(S); refresh();
+}
+
+/* --- Voting (editable) --- */
+function setVote(actorId, targetId){
+  const R=current(); const a=R.players.find(x=>x.id===actorId); const t=R.players.find(x=>x.id===targetId);
+  if(!a||!t) return toast('Cible invalide');
+  if(a.status===STATUS.DEAD) return toast('Les morts ne votent pas');
+  if(t.status===STATUS.DEAD) return toast('Cible morte');
+  if(R.phase!=='vote') return toast('Vote hors phase');
+  if(!R.votes) R.votes={};
+  R.votes[actorId]=targetId;
+  if(R.withdrawn) delete R.withdrawn[actorId];
+  Store.save(S); refresh();
+  toast('Vote enregistré');
+}
+function withdrawVote(actorId){
+  const R=current(); const a=R.players.find(x=>x.id===actorId);
+  if(!a) return;
+  if(R.phase!=='vote') return toast('Vote hors phase');
+  if(R.votes) delete R.votes[actorId];
+  if(!R.withdrawn) R.withdrawn={};
+  R.withdrawn[actorId]=true;
+  Store.save(S); refresh();
+  toast('Vote retiré');
+}
+
+/* --- Powers (Secret only) --- */
+function inSecret(){ const R=current(); if(!R) return false; if(R.phase!=='secret'){ toast('Pouvoirs uniquement pendant la Préparation des magouilles'); return false } return true }
+
+function usePower(actorId, pow, targetId){
+  if(!inSecret()) return;
+  const R=current(); const a=R.players.find(x=>x.id===actorId); const t=R.players.find(x=>x.id===targetId);
+  if(!a||!t) return toast('Cible invalide');
+  const costs={ protect:1, invest:2, exec:3, res:4 };
+
+  if(pow==='protect'){
+    if(a.status!==STATUS.ALIVE || t.status!==STATUS.ALIVE) return toast('Cible vivante requise');
+    if(a.tokens<costs.protect) return toast('Pas assez de cigares');
+    a.tokens-=1;
+    R.queue.prot.push({actor:a.id,target:t.id});
+    R.publicLog.push(`🥂 Un toast a été porté en secret.`);
+  } else if(pow==='invest'){
+    if(a.role===ROLE.TAUPE) return toast('Action non disponible');
+    if(a.status!==STATUS.ALIVE || t.status!==STATUS.ALIVE) return toast('Cible vivante requise');
+    if(a.tokens<costs.invest) return toast('Pas assez de cigares');
+    a.tokens-=2;
+    R.queue.inv.push({actor:a.id,target:t.id});
+    R.publicLog.push(`🔍 Une enquête a été programmée.`);
+toast('Enquête programmée (résultat à la phase Résolution des magouilles).');
+  } else if(pow==='exec'){
+    if(a.role!==ROLE.TAUPE) return toast('Action non disponible');
+    if(a.status!==STATUS.ALIVE || t.status!==STATUS.ALIVE) return toast('Cible vivante requise');
+    if(a.tokens<costs.exec) return toast('Pas assez de cigares');
+    a.tokens-=3;
+    R.queue.exec.push({actor:a.id,target:t.id});
+    R.publicLog.push(`🗡️ Un coup fourré se prépare dans l’ombre.`);
+  } else if(pow==='res'){
+    if(a.status!==STATUS.ALIVE || t.status!==STATUS.DEAD) return toast('Cible morte requise');
+    if(a.tokens<costs.res) return toast('Pas assez de cigares');
+    a.tokens-=4;
+    R.queue.res.push({actor:a.id,target:t.id});
+    R.publicLog.push(`⚰️ Une résurrection a été programmée.`);
+  }
+  Store.save(S); refresh();
+}
+
+/* Parrain special */
+function bossProtect(bossId, targetId){
+  if(!inSecret()) return;
+  const R=current();
+  const boss=R.players.find(x=>x.id===bossId), t=R.players.find(x=>x.id===targetId);
+  if(!boss || boss.role!==ROLE.PARRAIN || boss.status!==STATUS.ALIVE) return toast('Réservé au Parrain vivant');
+  if(!t || t.status!==STATUS.ALIVE) return toast('Cible vivante requise');
+  if(R.meta.parrainProtectRound===R.round) return toast('Offrir un 🍷 du Parrain déjà utilisée ce tour');
+  R.meta.parrainProtectRound=R.round;
+  R.queue.prot.push({actor:boss.id,target:t.id, boss:true});
+  R.publicLog.push(` 🥂 Un toast a été porté en secret.`);
+  Store.save(S); refresh();
+}
+
+/* Testaments */
+function submitTestament(authorId, text){
+  const R=current(); const p=R.players.find(x=>x.id===authorId); if(!p) return;
+  if(p.status!==STATUS.DEAD) return toast('Seulement si tu es mort');
+  if(p.testament || p.pendingTestament) return toast('Testament déjà soumis');
+  text=(text||'').trim(); if(!text) return toast('Message vide');
+  p.testament=text; p.pendingTestament=true;
+  R.publicLog.push(`📝 Un testament a été déposé.`);
+  Store.save(S); refresh();
+}
+function revealTestament(parrainId, targetId){
+  const R=current(); const boss=R.players.find(x=>x.id===parrainId);
+  if(!boss || boss.role!==ROLE.PARRAIN || boss.status!==STATUS.ALIVE) return toast('Lecture réservée au Parrain vivant');
+  const t=R.players.find(x=>x.id===targetId); if(!t||!t.pendingTestament) return toast('Aucun testament en attente');
+  t.pendingTestament=false;
+  R.publicLog.push(`📜 Testament de ${t.name} : “${sanitize(t.testament)}”`);
+  Store.save(S); refresh();
+}
+
+/* Rendering */
+function renderPublic(){
+  const R=current();
+  document.getElementById('gameMeta').textContent=R? `${R.name} — ${R.started?'en cours':'lobby'}` : 'Aucun salon';
+  document.getElementById('phaseSel').value = R? R.phase : 'secret';
+  const tbody=document.querySelector('#tablePublic tbody'); tbody.innerHTML='';
+  if(!R) return;
+  R.players.forEach(p=>{
+    const shield = p.shields>0 ? ` · 🥂×${p.shields}` : '';
+    const test = p.pendingTestament?' · 📝':'';
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.hp} 🍷</td><td>${p.tokens} 🚬</td><td>${p.status}${shield}${test}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  const votePanel = document.getElementById('voteStatusPanel');
+  const list = document.getElementById('voteStatusList');
+  if(R.phase==='vote'){
+    votePanel.style.display='block';
+    list.innerHTML='';
+    const alive = R.players.filter(p=>p.status===STATUS.ALIVE);
+    alive.forEach(p=>{
+      const hasVote = R.votes && R.votes[p.id];
+      const withdrew = R.withdrawn && R.withdrawn[p.id];
+      const cls = hasVote ? 'green' : (withdrew ? 'red' : 'hollow');
+      const statusTxt = hasVote ? 'a voté' : (withdrew ? 'vote retiré' : 'en attente');
+      const div=document.createElement('div'); div.className='item';
+      div.innerHTML=`<span class="dot ${cls}"></span><div style="flex:1">${p.name}</div><div class="muted">${statusTxt}</div>`;
+      list.appendChild(div);
+    });
+  } else {
+    votePanel.style.display='none';
+  }
+
+  document.getElementById('publicLog').innerHTML=(R.publicLog||[]).slice(-300).map(l=>`<div>${l}</div>`).join('');
+}
+
+function renderPlayers(){
+  const R=current();
+  const list=document.getElementById('playersList'); list.innerHTML='';
+  const selfSel=document.getElementById('selfPlayerSel'); selfSel.innerHTML='';
+  if(!R) return;
+  R.players.forEach(p=>{
+    const div=document.createElement('div'); div.className='item';
+    const shield = p.shields>0 ? ` · 🥂×${p.shields}` : '';
+    div.innerHTML = `<div class="badge">${p.role||'—'}</div><div style="flex:1">${p.name}</div><div class="muted">🍷 ${p.hp} · 🚬 ${p.tokens}${shield}${p.pendingTestament?' · 📝':''}</div>${R.locked?'':`<button class="btn-danger" data-id="${p.id}">Suppr</button>`}`;
+    list.appendChild(div); selfSel.appendChild(new Option(p.name,p.id));
+    if(!R.locked) div.querySelector('button').addEventListener('click',()=>removePlayer(p.id));
+  });
+
+  document.getElementById('addPlayerBtn').disabled = R.locked;
+  document.getElementById('playerName').disabled = R.locked;
+
+  document.getElementById('lockedCount').value = R.locked? R.lockedCount : R.players.length;
+  const remain = (R.locked? R.lockedCount : R.players.length) - 2;
+  
+}
+
+function renderPhone(id){
+  const R=current(); if(!R) return;
+  const p=R.players.find(x=>x.id===id); if(!p) return;
+  const el=document.getElementById('phoneContent');
+  const isDead = p.status===STATUS.DEAD;
+  const isParrain = p.role===ROLE.PARRAIN;
+  const isInfiltré = p.role===ROLE.TAUPE;
+
+  el.innerHTML = `
+    <div class="kpi">
+      <div class="box"><div class="muted">Joueur</div><div class="pv">${p.name}</div></div>
+      <div class="box"><div class="muted">Rôle</div><div class="pv">${p.role||'—'}</div></div>
+      <div class="box"><div class="muted">Verres 🍷</div><div class="pv">${p.hp}</div></div>
+      <div class="box"><div class="muted">Cigares 🚬</div><div class="pv">${p.tokens}</div></div>
+      <div class="box"><div class="muted">Statut</div><div class="pv">${p.status}${p.shields>0?' · ×'+p.shields:''}${p.pendingTestament?' · 📝':''}</div></div>
+    </div>
+    <div class="muted">${({[ROLE.PARRAIN]:'Chef de la Famille. 🥂 Porter un toast gratuit 1×/tour (Préparation des magouilles).',[ROLE.SOUS]:'Bras droit.',[ROLE.SOLDAT]:'Mafieux loyal.',[ROLE.TAUPE]:'Infiltré·e.'}[p.role])||''}</div>
+    ${!isDead ? `
+      <h3>Actions — Préparation des magouilles uniquement</h3>
+      <div class="row">
+        ${isParrain ? `<div style="flex:1"><label class="muted">🥂 Porter un toast gratuit (1×/tour)</label><select id="protectSel"></select><button class="btn" id="protectBtn">🥂 Porter un toast</button></div>` : ``}
+        <div style="flex:1">
+          <label class="muted">Pouvoirs (cigares)</label>
+          <select id="powerSel">
+            <option value="protect">🥂 Porter un toast (1)</option>
+            ${p.role!==ROLE.TAUPE ? `<option value="invest">🔍 Enquêter (2)</option>`:``}
+            ${isInfiltré ? `<option value="exec">🗡️ Coup fourré (3)</option>`:``}
+            <option value="res">⚰️ Servir un 🍷 (4)</option>
+          </select>
+          <div class="row">
+            <select id="targetSel"></select>
+            <button class="btn-acc" id="usePowerBtn">Programmer</button>
+          </div>
+        </div>
+        <div style="flex:1">
+          <label class="muted">Vote (phase Vote, modifiable)</label>
+          <select id="voteSel"></select>
+          <div class="row">
+            <button class="btn" id="voteBtn">Enregistrer/mettre à jour</button>
+            <button class="btn-danger" id="withdrawBtn">Retirer mon vote</button>
+          </div>
+        </div>
+      </div>
+      <div id="investResults"></div>
+      <div id="queuedActions"></div>
+    ` : `
+      <h3>Testament</h3>
+      ${(!p.testament && !p.pendingTestament) ? `
+        <textarea id="testamentTxt" maxlength="120" placeholder="Une phrase/clé unique... (max 120 caractères)"></textarea>
+        <button class="btn-acc" id="submitWillBtn">📝 Soumettre (1 fois)</button>
+        <small class="muted">Tu peux écrire ton testament <b>une seule fois</b>. Il pourra être lu publiquement plus tard.</small>
+      ` : `
+        <div class="muted">Testament soumis. En attente de lecture.</div>
+      `}
+    `}
+    ${isParrain ? `
+      <h3>Testaments reçus</h3>
+      <div id="pendingWills"></div>
+    ` : ``}
+  `;
+
+  if(!isDead){
+    const protectSel = el.querySelector('#protectSel');
+    if(protectSel){
+      const aliveOthers = R.players.filter(x=>x.status===STATUS.ALIVE && x.id!==p.id);
+      aliveOthers.forEach(q=>protectSel.appendChild(new Option(q.name, q.id)));
+      el.querySelector('#protectBtn').addEventListener('click', ()=>{ const tid=protectSel.value; bossProtect(p.id, tid); });
+    }
+    const targetSel = el.querySelector('#targetSel');
+    const powerSel = el.querySelector('#powerSel');
+    function refillTargets(){
+      const pow=powerSel.value;
+      let candidates=[];
+      if(pow==='res'){ candidates = R.players.filter(x=>x.status===STATUS.DEAD); }
+      else { candidates = R.players.filter(x=>x.status===STATUS.ALIVE && x.id!==p.id); }
+      targetSel.innerHTML=''; candidates.forEach(q=>targetSel.appendChild(new Option(`${q.name} (${q.status})`, q.id)));
+    }
+    refillTargets(); powerSel.addEventListener('change', refillTargets);
+    el.querySelector('#usePowerBtn').addEventListener('click', ()=>{ const pow=powerSel.value; const tid=targetSel.value; usePower(p.id, pow, tid); });
+
+    const voteSel = el.querySelector('#voteSel');
+    const voteTargets = R.players.filter(x=>x.status===STATUS.ALIVE && x.id!==p.id);
+    voteTargets.forEach(q=>voteSel.appendChild(new Option(q.name, q.id)));
+    if(R.votes && R.votes[p.id]) voteSel.value = R.votes[p.id];
+    el.querySelector('#voteBtn').addEventListener('click', ()=>{ const tid=voteSel.value; setVote(p.id, tid); });
+    el.querySelector('#withdrawBtn').addEventListener('click', ()=>{ withdrawVote(p.id); });
+
+    const results = (p.investigatedBy||[]).filter(r=>r.who===p.id);
+    if(results.length){
+      const wrap = document.getElementById('investResults');
+      wrap.innerHTML = `<h3>Résultats d’enquête</h3>` + results.map(r=>{
+        const target = R.players.find(x=>x.id===r.target);
+        const name = target? target.name : '???';
+        return `<div class="item"><div><b>${name}</b> → ${r.result.toUpperCase()} (T${r.round})</div></div>`;
+      }).join('');
+    }
+
+    const qbox = document.getElementById('queuedActions');
+    const mine = {
+      prot: R.queue.prot.filter(a=>a.actor===p.id),
+      exec: R.queue.exec.filter(a=>a.actor===p.id),
+      inv:  R.queue.inv.filter(a=>a.actor===p.id),
+      res:  R.queue.res.filter(a=>a.actor===p.id),
+    };
+    const chunks=[];
+    if(mine.prot.length||mine.exec.length||mine.inv.length||mine.res.length){
+      chunks.push('<h3>Actions secrètes programmées</h3>');
+      const nameById = id => (R.players.find(x=>x.id===id)||{name:'???'}).name;
+      if(mine.prot.length) chunks.push(...mine.prot.map(a=>`<div class="item"> Offrir un 🍷 → ${nameById(a.target)}</div>`));
+      if(mine.exec.length) chunks.push(...mine.exec.map(a=>`<div class="item">🗡️ Attaque → ${nameById(a.target)}</div>`));
+      if(mine.inv.length)  chunks.push(...mine.inv.map(a=>`<div class="item">🔍 Enquête → ${nameById(a.target)}</div>`));
+      if(mine.res.length)  chunks.push(...mine.res.map(a=>`<div class="item">⚰️ Servir un 🍷 → ${nameById(a.target)}</div>`));
+    }
+    qbox.innerHTML = chunks.join('') || '';
+  } else {
+    const btn=el.querySelector('#submitWillBtn');
+    if(btn){
+      btn.addEventListener('click', ()=>{ const txt=el.querySelector('#testamentTxt').value; submitTestament(p.id, txt); });
+    }
+  }
+
+  if(isParrain){
+    const box=el.querySelector('#pendingWills');
+    const pend = R.players.filter(x=>x.pendingTestament);
+    if(!pend.length){ box.innerHTML = `<div class="muted">Aucun testament en attente.</div>`; }
+    else{
+      box.innerHTML = pend.map(x=>`
+        <div class="item" style="align-items:flex-start">
+          <div style="flex:1">
+            <div><b>${x.name}</b> — ${x.status}</div>
+            <div class="muted">Contenu masqué. Cliquer pour le lire publiquement.</div>
+          </div>
+          <button class="btn-acc" data-id="${x.id}">📜 Lire au groupe</button>
+        </div>
+      `).join('');
+      box.querySelectorAll('button[data-id]').forEach(b=>{ b.addEventListener('click', ()=>revealTestament(p.id, b.getAttribute('data-id'))); });
+    }
+  }
+}
+
+document.getElementById('createRoomBtn').addEventListener('click', ()=>{ ensureRoom(document.getElementById('roomName').value.trim()||'Salon') });
+document.getElementById('addPlayerBtn').addEventListener('click', ()=>{ addPlayer(document.getElementById('playerName').value||''); document.getElementById('playerName').value=''; });
+document.getElementById('confirmPlayersBtn').addEventListener('click', confirmPlayers);
+document.getElementById('unlockPlayersBtn').addEventListener('click', unlockPlayers);
+document.getElementById('assignRolesBtn').addEventListener('click', assignRoles);
+document.getElementById('startGameBtn').addEventListener('click', startGame);
+document.getElementById('clearRoomBtn').addEventListener('click', ()=>{ const R=current(); if(!R)return; delete S.rooms[S.current]; S.current=null; Store.save(S); refresh(); });
+document.getElementById('nextPhaseBtn').addEventListener('click', nextPhase);
+document.getElementById('phaseSel').addEventListener('change', (e)=>{ const R=current(); if(!R) return; R.phase=e.target.value; Store.save(S); refresh(); });
+document.getElementById('viewAsBtn').addEventListener('click', ()=>{ renderPhone(document.getElementById('selfPlayerSel').value) });
+document.getElementById('purgeBtn') && document.getElementById('purgeBtn').addEventListener('click', purgeAll);
+document.getElementById('restartBtn') && document.getElementById('restartBtn').addEventListener('click', restartGame);
+document.getElementById('headerRestart') && document.getElementById('headerRestart').addEventListener('click', restartGame);
+
+function purgeAll(){
+  try { localStorage.removeItem('lafamille_v1_3_8b'); } catch(e) {}
+  S = { rooms:{} }; Store.save(S);
+  location.reload();
+}
+function refresh(){
+  const R=current();
+  // Toggle header restart button and phase controls
+  const headerBtn = document.getElementById('headerRestart');
+  const nextBtn = document.getElementById('nextPhaseBtn');
+  const phaseSel = document.getElementById('phaseSel');
+  const endBanner = document.getElementById('endBanner');
+  const ended = R && !R.started && R.players && R.players.length>0;
+
+  if(headerBtn) headerBtn.style.display = ended ? 'inline-block' : 'none';
+  if(nextBtn) nextBtn.disabled = ended;
+  if(phaseSel) phaseSel.disabled = ended;
+  if(endBanner) endBanner.style.display = ended ? 'block' : 'none';
+
+  document.getElementById('gameMeta').textContent = R? `${R.name} — ${R.started? 'en cours':'lobby'}` : 'Aucun salon';
+  renderPublic(); renderPlayers();
+  const selfSel=document.getElementById('selfPlayerSel'); if(selfSel.value) renderPhone(selfSel.value);
+}
+refresh();
+</script>
+
+<div id="landingGate" style="display:none">
+  <div class="card">
+    <h1>La Famille — Créer ou Rejoindre</h1>
+    <div class="row">
+      <input id="lgPseudo" placeholder="Ton pseudo" maxlength="16">
+      <input id="lgCode" placeholder="Code salle (ex: AB7Q9)">
+    </div>
+    <div class="row">
+      <button id="lgCreate">Créer une salle</button>
+      <button id="lgJoin">Rejoindre la salle</button>
+    </div>
+    <div class="muted">Nom unique par salle. Revenir avec le même nom te reconnecte.</div>
+  </div>
+</div>
+<div id="salonBar" style="display:none">
+  <div class="wrap">
+    <span class="badge">Salle <b id="sbCode">—</b></span>
+    <span class="badge">Joueurs <b id="sbCount">0</b></span>
+    <div id="playerChips"></div>
+    <span style="flex:1"></span>
+    <button id="sbConvoke" style="display:none">Convoquer la famille</button>
+    <button id="sbReset"   style="display:none">Retour aux réglages</button>
+  </div>
+</div>
+
+
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL = "https://pnkjdfvetlmpqogxzxwr.supabase.co"; // ← à remplir
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBua2pkZnZldGxtcHFvZ3h6eHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEzMDc2MzQsImV4cCI6MjA3Njg4MzYzNH0.E3T1u1quicSfCUYtVY4lnDOAY9SjnIAh6m-hnRKWP0M"; // ← à remplir
+</script>
+
+
+<script>
+(function(){
+  const supa = (SB_URL && SB_KEY && window.supabase) ? supabase.createClient(SB_URL, SB_KEY) : null;
+  const devId = (localStorage.getItem('deviceId') || (crypto.randomUUID?.() || String(Math.random()).slice(2)));
+  localStorage.setItem('deviceId', devId);
+  let roomId=null, roomCode=null, hostId=null, meId=null, isHost=false;
+
+  const $ = s=>document.querySelector(s);
+  const $$= s=>Array.from(document.querySelectorAll(s));
+
+  // Inject landing & salonBar
+  (function mountShell(){
+    const host = document.createElement('div');
+    host.innerHTML = `
+<div id="landingGate" style="display:none">
+  <div class="card">
+    <h1>La Famille — Créer ou Rejoindre</h1>
+    <div class="row">
+      <input id="lgPseudo" placeholder="Ton pseudo" maxlength="16">
+      <input id="lgCode" placeholder="Code salle (ex: AB7Q9)">
+    </div>
+    <div class="row">
+      <button id="lgCreate">Créer une salle</button>
+      <button id="lgJoin">Rejoindre la salle</button>
+    </div>
+    <div class="muted">Nom unique par salle. Revenir avec le même nom te reconnecte.</div>
+  </div>
+</div>
+<div id="salonBar" style="display:none">
+  <div class="wrap">
+    <span class="badge">Salle <b id="sbCode">—</b></span>
+    <span class="badge">Joueurs <b id="sbCount">0</b></span>
+    <div id="playerChips"></div>
+    <span style="flex:1"></span>
+    <button id="sbConvoke" style="display:none">Convoquer la famille</button>
+    <button id="sbReset"   style="display:none">Retour aux réglages</button>
+  </div>
+</div>
+`;
+    document.body.appendChild(host);
+    // CSS state
+    document.documentElement.classList.add('mode-lobby');
+    $('#landingGate').style.display='flex';
+  })();
+
+  function setMode(m){ document.documentElement.classList.remove('mode-lobby','mode-play'); document.documentElement.classList.add(m); }
+  function hideLegacy(){
+    $$('h1,h2,h3').forEach(h=>{
+      const t=(h.textContent||'').trim().toLowerCase();
+      if (['salon','joueurs confirmés','salon & joueurs'].includes(t)){
+        const sec = h.closest('section,div,article,.card,.panel') || h;
+        sec.classList.add('hide-legacy');
+      }
+    });
+    $$('button').forEach(b=>{
+      const t=(b.textContent||'').trim().toLowerCase();
+      if (t.includes('convoquer la famille') && !document.getElementById('sbConvoke')?.contains(b)) b.classList.add('hide-legacy');
+    });
+  }
+
+  async function refreshPlayers(){
+    if (!supa || !roomId) return;
+    const { data: players } = await supa.from('game_players').select('id,name,is_host,device_id,status').eq('room_id', roomId).order('created_at',{ascending:true});
+    const chips = (players||[]).map(p=>`<span class="chip">${p.is_host?'👑 ':''}${p.name}${p.status==='DEAD'?' ☠️':''}</span>`).join(' ');
+    const cnt = players?.length ?? 0;
+    const cEl = document.getElementById('sbCount'); if (cEl) cEl.textContent = cnt;
+    const pEl = document.getElementById('playerChips'); if (pEl) pEl.innerHTML = chips;
+  }
+  async function syncRoom(){
+    if (!supa || !roomId) return;
+    const { data: room } = await supa.from('game_rooms').select('*').eq('id', roomId).single();
+    if (!room) return;
+    roomCode = room.code; hostId = room.host_device_id;
+    const codeEl = document.getElementById('sbCode'); if (codeEl) codeEl.textContent = room.code;
+    isHost = (hostId===devId);
+    const cv = document.getElementById('sbConvoke'); const rs = document.getElementById('sbReset');
+    if (cv) cv.style.display = (isHost && room.status==='lobby') ? 'inline-block' : 'none';
+    if (rs) rs.style.display = (isHost && room.status!=='lobby') ? 'inline-block' : 'none';
+    if (room.status==='started'){
+      setMode('mode-play');
+      document.getElementById('landingGate').style.display='none';
+      document.getElementById('salonBar').style.display='block';
+      const phone = document.getElementById('phoneContent') || document.getElementById('monTelephone') || document.getElementById('phone');
+      if (phone) phone.scrollIntoView({behavior:'smooth', block:'start'});
+    } else {
+      setMode('mode-lobby');
+      document.getElementById('landingGate').style.display='none';
+      document.getElementById('salonBar').style.display='block';
+    }
+  }
+
+  let chRoom=null, chPlayers=null;
+  function subRoom(){
+    if (!supa || !roomId) return;
+    if (chRoom) supa.removeChannel(chRoom);
+    chRoom = supa.channel('room_'+roomId)
+      .on('postgres_changes',{event:'*',schema:'public',table:'game_rooms',filter:'id=eq.'+roomId}, ()=>syncRoom())
+      .subscribe();
+    syncRoom();
+  }
+  function subPlayers(){
+    if (!supa || !roomId) return;
+    if (chPlayers) supa.removeChannel(chPlayers);
+    chPlayers = supa.channel('players_'+roomId)
+      .on('postgres_changes',{event:'*',schema:'public',table:'game_players',filter:'room_id=eq.'+roomId}, ()=>refreshPlayers())
+      .subscribe();
+    refreshPlayers();
+  }
+
+  function randCode(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<5;i++) s+=a[Math.floor(Math.random()*a.length)]; return s; }
+
+  async function upsertPlayer(name){
+    const { data: room } = await supa.from('game_rooms').select('id,code').eq('code', roomCode).single();
+    const { data: exists } = await supa.from('game_players').select('id').eq('room_id', room.id).eq('name', name).maybeSingle();
+    if (exists){
+      const { data: me } = await supa.from('game_players').update({ device_id: devId }).eq('id', exists.id).select().single();
+      meId = me.id;
+      return me;
+    } else {
+      const { data: me, error } = await supa.from('game_players').insert({ room_id: room.id, room_code: room.code, device_id: devId, name, is_host: (hostId===devId) }).select().single();
+      if (error) throw error;
+      meId = me.id;
+      return me;
+    }
+  }
+
+  async function createRoomFlow(){
+    if (!supa) return alert('Configure Supabase.');
+    const pseudo = (document.getElementById('lgPseudo').value||'').trim(); if (!pseudo) return alert('Pseudo');
+    const code = (document.getElementById('lgCode').value||'').trim() || randCode();
+    const { data: room, error } = await supa.from('game_rooms').insert({ code, host_device_id: devId, status:'lobby', phase:'secret', round:1, settings:{} }).select().single();
+    if (error){
+      if ((error.message||'').includes('duplicate key')) return alert('Code déjà pris.');
+      return alert(error.message);
+    }
+    roomId=room.id; roomCode=room.code; hostId=room.host_device_id;
+    document.getElementById('landingGate').style.display='none';
+    document.getElementById('salonBar').style.display='block';
+    document.getElementById('sbCode').textContent = room.code;
+    await upsertPlayer(pseudo);
+    hideLegacy();
+    subRoom(); subPlayers();
+  }
+
+  async function joinRoomFlow(){
+    if (!supa) return alert('Configure Supabase.');
+    const pseudo = (document.getElementById('lgPseudo').value||'').trim(); if (!pseudo) return alert('Pseudo');
+    const code = (document.getElementById('lgCode').value||'').trim(); if (!code) return alert('Code');
+    const { data: room, error } = await supa.from('game_rooms').select('*').eq('code', code).maybeSingle();
+    if (error || !room) return alert('Salle introuvable');
+    roomId=room.id; roomCode=room.code; hostId=room.host_device_id;
+    document.getElementById('landingGate').style.display='none';
+    document.getElementById('salonBar').style.display='block';
+    document.getElementById('sbCode').textContent = room.code;
+    await upsertPlayer(pseudo);
+    hideLegacy();
+    subRoom(); subPlayers();
+  }
+
+  async function convoke(){
+    if (!isHost) return alert('Seul l’hôte');
+    await supa.from('game_rooms').update({ status:'started' }).eq('id', roomId);
+    await syncRoom();
+  }
+  async function resetLobby(){
+    if (!isHost) return alert('Seul l’hôte');
+    await supa.from('game_rooms').update({ status:'lobby', phase:'secret', round:1 }).eq('id', roomId);
+    await syncRoom();
+  }
+
+  document.addEventListener('click', (e)=>{
+    const id = (e.target && e.target.id) || '';
+    if (id==='lgCreate') createRoomFlow();
+    if (id==='lgJoin')   joinRoomFlow();
+    if (id==='sbConvoke')convoke();
+    if (id==='sbReset')  resetLobby();
+  });
+
+  // Poll de secours
+  setInterval(()=>{ syncRoom(); refreshPlayers(); }, 1500);
+
+})();
+</script>
+
+</body>
+</html>
