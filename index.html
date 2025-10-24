@@ -54,7 +54,13 @@
     .dot.green{background:#10b981; border-color:#10b981}
     .dot.hollow{background:transparent; border-color:#6b7280}
     .dot.red{background:transparent; border-color:#ef4444}
-  </style>
+  /* Quand la partie est lancée, on cache les commandes d'admin de la barre en ligne */
+html[data-mode="play"] #createBtn,
+html[data-mode="play"] #joinBtn,
+html[data-mode="play"] #startBtn {
+  display: none !important;
+}
+</style>
 
 <style>
 #onlineBar {position:sticky; top:0; z-index:9999; background:#111; color:#fff; padding:8px 12px; font-family:system-ui,-apple-system,Roboto,Arial,sans-serif; border-bottom:1px solid #333;}
@@ -973,6 +979,50 @@ if (els.createBtn) els.createBtn.onclick = createRoom;
 if (els.joinBtn) els.joinBtn.onclick = joinRoom;
 if (els.startBtn) els.startBtn.onclick = startGame;
 if (els.resetBtn) els.resetBtn.onclick = resetToLobby;
+(function(){
+  window.updateRoomUI = function(room){
+    try {
+      if (room.status === 'enCours') {
+        document.documentElement.setAttribute('data-mode','play');
+        const phone = document.getElementById('phoneContent');
+        if (phone) phone.scrollIntoView({behavior:'smooth', block:'start'});
+      } else {
+        document.documentElement.setAttribute('data-mode','host');
+      }
+      const isHost = (window.hostDeviceId === window.deviceId);
+      const startBtn = document.getElementById('startBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      if (startBtn) startBtn.style.display = (isHost && room.status === 'lobby') ? 'inline-block' : 'none';
+      if (resetBtn) resetBtn.style.display = (isHost && room.status !== 'lobby') ? 'inline-block' : 'none';
+    } catch(e){ console.warn(e); }
+  };
+})();
+(function () {
+  function hideLegacyPanelsIfOnlineBarPresent() {
+    const onlineBar = document.getElementById('onlineBar');
+    if (!onlineBar) return;
+    const headings = Array.from(document.querySelectorAll('h2, h3'));
+    headings.forEach(h => {
+      const txt = (h.textContent || '').trim().toLowerCase();
+      if (txt === 'salon' || txt === 'joueurs confirmés' || txt === 'salon & joueurs') {
+        let sec = h.closest('section, div, article, .card, .panel');
+        (sec || h).style.display = 'none';
+      }
+    });
+    const allButtons = Array.from(document.querySelectorAll('button'));
+    allButtons.forEach(b => {
+      const t = (b.textContent || '').trim().toLowerCase();
+      if (t.includes('convoquer la famille') && !onlineBar.contains(b)) {
+        b.style.display = 'none';
+      }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', hideLegacyPanelsIfOnlineBarPresent);
+  } else {
+    hideLegacyPanelsIfOnlineBarPresent();
+  }
+})();
 </script>
 
 </body>
